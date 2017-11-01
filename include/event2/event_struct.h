@@ -120,6 +120,7 @@ struct event_callback {
 };
 
 struct event_base;
+/* event handler */
 struct event {
 	struct event_callback ev_evcallback;
 
@@ -135,8 +136,8 @@ struct event {
 	union {
 		/* used for io events */
 		struct {
-			LIST_ENTRY (event) ev_io_next;
-			struct timeval ev_timeout;
+			LIST_ENTRY (event) ev_io_next; /* next event */
+			struct timeval ev_timeout;     /* timeout of event */
 		} ev_io;
 
 		/* used by signal events */
