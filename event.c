@@ -2550,6 +2550,14 @@ int
 event_add_nolock_(struct event *ev, const struct timeval *tv,
     int tv_is_absolute)
 {
+    /*
+     * struct event *ev [in] 指向要注册的事件
+     * const struct timeval *tv [in] 超时时间
+     * 函数将 ev 注册到 ev->ev_base 上, 事件类型由 ev->ev_events 指明,
+     * 如果注册成功, ev 将被插入到已注册链表中; 如果 tv 不是 NULL ,则
+     * 会同时注册定时事件, 将 ev 添加到 timer 堆上.
+     *
+     */
 	struct event_base *base = ev->ev_base;
 	int res = 0;
 	int notify = 0;
@@ -2577,6 +2585,9 @@ event_add_nolock_(struct event *ev, const struct timeval *tv,
 	/*
 	 * prepare for timeout insertion further below, if we get a
 	 * failure on any step, we should not change any state.
+	 * 
+	 * 新的 timer 事件, 调用 timer heap 接口在堆上预留一个位置
+	 * 这样能保证该操作的原子性. 
 	 */
 	if (tv != NULL && !(ev->ev_flags & EVLIST_TIMEOUT)) {
 		if (min_heap_reserve_(&base->timeheap,
@@ -2597,6 +2608,10 @@ event_add_nolock_(struct event *ev, const struct timeval *tv,
 	}
 #endif
 
+    /*
+     * 如果事件 ev 不在已注册或者激活链表中, 则调用 evmap_io_add_() 或
+     * evmap_signal_add_() 注册事件.
+     */
 	if ((ev->ev_events & (EV_READ|EV_WRITE|EV_CLOSED|EV_SIGNAL)) &&
 	    !(ev->ev_flags & (EVLIST_INSERTED|EVLIST_ACTIVE|EVLIST_ACTIVE_LATER))) {
 		if (ev->ev_events & (EV_READ|EV_WRITE|EV_CLOSED))
@@ -2604,7 +2619,7 @@ event_add_nolock_(struct event *ev, const struct timeval *tv,
 		else if (ev->ev_events & EV_SIGNAL)
 			res = evmap_signal_add_(base, (int)ev->ev_fd, ev);
 		if (res != -1)
-			event_queue_insert_inserted(base, ev);
+			event_queue_insert_inserted(base, ev); /* 注册成功, 插入 event 到已注册链表中 */
 		if (res == 1) {
 			/* evmap says we need to notify the main thread. */
 			notify = 1;
@@ -2635,13 +2650,16 @@ event_add_nolock_(struct event *ev, const struct timeval *tv,
 
 #ifndef USE_REINSERT_TIMEOUT
 		if (ev->ev_flags & EVLIST_TIMEOUT) {
+            /*
+             * EVLIST_TIMEOUT 表明 event 已经在定时器堆中了, 则需删除旧的.
+             */
 			event_queue_remove_timeout(base, ev);
 		}
 #endif
 
 		/* Check if it is active due to a timeout.  Rescheduling
 		 * this timeout before the callback can be executed
-		 * removes it from the active list. */
+		 * removes it from the active list. */		
 		if ((ev->ev_flags & EVLIST_ACTIVE) &&
 		    (ev->ev_res & EV_TIMEOUT)) {
 			if (ev->ev_events & EV_SIGNAL) {
@@ -2653,10 +2671,11 @@ event_add_nolock_(struct event *ev, const struct timeval *tv,
 					*ev->ev_pncalls = 0;
 				}
 			}
-
+            /* 如果事件已经是就绪状态, 则从激活链表中删除. */
 			event_queue_remove_active(base, event_to_event_callback(ev));
 		}
 
+        /* 计算时间, 并插入到 timer 小根堆中 */
 		gettime(base, &now);
 
 		common_timeout = is_common_timeout(tv, base);
@@ -2769,7 +2788,9 @@ event_del_nolock_(struct event *ev, int blocking)
 	event_debug(("event_del: %p (fd "EV_SOCK_FMT"), callback %p",
 		ev, EV_SOCK_ARG(ev->ev_fd), ev->ev_callback));
 
-	/* An event without a base has not been added */
+	/* An event without a base has not been added 
+     * 当 ev->ev_base 为 NULL, 表明 ev 没有被注册.
+     */    
 	if (ev->ev_base == NULL)
 		return (-1);
 
@@ -2782,6 +2803,7 @@ event_del_nolock_(struct event *ev, int blocking)
 		}
 	}
 
+    /* 获得 ev 注册的 event_base */
 	base = ev->ev_base;
 
 	EVUTIL_ASSERT(!(ev->ev_flags & ~EVLIST_ALL));
@@ -2794,6 +2816,9 @@ event_del_nolock_(struct event *ev, int blocking)
 		}
 	}
 
+    /*
+     * 从对应的链表中删除.
+     */
 	if (ev->ev_flags & EVLIST_TIMEOUT) {
 		/* NOTE: We never need to notify the main thread because of a
 		 * deleted timeout event: all that could happen if we don't is
@@ -2811,7 +2836,8 @@ event_del_nolock_(struct event *ev, int blocking)
 		event_queue_remove_active_later(base, event_to_event_callback(ev));
 
 	if (ev->ev_flags & EVLIST_INSERTED) {
-		event_queue_remove_inserted(base, ev);
+		event_queue_remove_inserted(base, ev);        
+        /* EVLIST_INSERTED 表明是 I/O 或 Signal 事件, 需要调用 I/O demultiplexer 注销事件 */
 		if (ev->ev_events & (EV_READ|EV_WRITE|EV_CLOSED))
 			res = evmap_io_del_(base, ev->ev_fd, ev);
 		else
