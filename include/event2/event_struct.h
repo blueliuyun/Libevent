@@ -122,14 +122,14 @@ struct event_callback {
 struct event_base;
 /* event handler */
 struct event {
-	struct event_callback ev_evcallback;
+	struct event_callback ev_evcallback; /* event 的回调函数, 被 ev_base 调用, 执行事件处理函数 */
 
 	/* for managing timeouts */
 	union {
 		TAILQ_ENTRY(event) ev_next_with_common_timeout;
 		int min_heap_idx;
 	} ev_timeout_pos;
-	evutil_socket_t ev_fd;
+	evutil_socket_t ev_fd; /* 对于 I/O 事件,是绑定的文件描述符; 对于 signal 事件,是绑定的信号 */
 
 	struct event_base *ev_base;
 
@@ -142,15 +142,15 @@ struct event {
 
 		/* used by signal events */
 		struct {
-			LIST_ENTRY (event) ev_signal_next;
-			short ev_ncalls;
+			LIST_ENTRY (event) ev_signal_next; /* doubule linked list */
+			short ev_ncalls;   /* 事件就绪执行时,调用 ev_callback 的次数,通常为1 */
 			/* Allows deletes in callback */
-			short *ev_pncalls;
+			short *ev_pncalls; /* 指针,通常指向 ev_ncalls 或者为 NULL */
 		} ev_signal;
 	} ev_;
 
-	short ev_events;
-	short ev_res;		/* result passed to event callback */
+	short ev_events; /* 事件类型: I/O事件, 定时事件(EV_TIMEOUT, 0x01), 信号事件( EV_SIGNAL ) */
+	short ev_res;	 /* result passed to event callback , 记录了当前激活事件的类型 */
 	struct timeval ev_timeout;
 };
 
