@@ -119,6 +119,10 @@ static void __cdecl evsig_handler(int sig);
 void
 evsig_set_base_(struct event_base *base)
 {
+    /*
+     * 全局变量, evsig_base, 在处理 signal 时, 用于指明 signal 所属的 
+     * event_base 实例
+     */
 	EVSIGBASE_LOCK();
 	evsig_base = base;
 	evsig_base_n_signals_added = base->sig.ev_n_signals_added;
@@ -262,7 +266,7 @@ evsig_set_handler_(struct event_base *base,
 		return (-1);
 	}
 #else
-	if ((sh = signal(evsignal, handler)) == SIG_ERR) {
+	if ((sh = signal(evsignal, handler)) == SIG_ERR) { /* 重新注册信号 */
 		event_warn("signal");
 		mm_free(sig->sh_old[evsignal]);
 		sig->sh_old[evsignal] = NULL;
@@ -274,6 +278,9 @@ evsig_set_handler_(struct event_base *base,
 	return (0);
 }
 
+/*
+ * 注册 signal 事件
+ */
 static int
 evsig_add(struct event_base *base, evutil_socket_t evsignal, short old, short events, void *p)
 {
@@ -298,16 +305,20 @@ evsig_add(struct event_base *base, evutil_socket_t evsignal, short old, short ev
 	evsig_base_fd = base->sig.ev_signal_pair[1];
 	EVSIGBASE_UNLOCK();
 
+    /*
+     * libevent 对 signal 信号注册用的函数 evsig_set_handler_()
+     */
 	event_debug(("%s: %d: changing signal handler", __func__, (int)evsignal));
 	if (evsig_set_handler_(base, (int)evsignal, evsig_handler) == -1) {
 		goto err;
 	}
 
 
-	if (!sig->ev_signal_added) {
-		if (event_add_nolock_(&sig->ev_signal, NULL, 0))
+	if (!sig->ev_signal_added) {                         /* if 当前 signal 还未注册过. */
+		if (event_add_nolock_(&sig->ev_signal, NULL, 0)) /* 第 2 个形参为 NULL 表明该事件 signal 无需同时注册 timer 事件. */
 			goto err;
-		sig->ev_signal_added = 1;
+        /* 当前 signal 完成注册. */
+		sig->ev_signal_added = 1;                        
 	}
 
 	return (0);

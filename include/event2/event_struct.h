@@ -55,13 +55,13 @@ extern "C" {
 #include <event2/keyvalq_struct.h>
 
 #define EVLIST_TIMEOUT	    0x01
-#define EVLIST_INSERTED	    0x02
+#define EVLIST_INSERTED	    0x02 /* 事件已经插入到事件列表中 */
 #define EVLIST_SIGNAL	    0x04
-#define EVLIST_ACTIVE	    0x08
-#define EVLIST_INTERNAL	    0x10
+#define EVLIST_ACTIVE	    0x08 /* 事件处于激活状态 */
+#define EVLIST_INTERNAL	    0x10 /* 内部事件, 忽略 */
 #define EVLIST_ACTIVE_LATER 0x20
-#define EVLIST_FINALIZING   0x40
-#define EVLIST_INIT	    0x80
+#define EVLIST_FINALIZING   0x40 
+#define EVLIST_INIT	        0x80 /* 事件已经初始化 */
 
 #define EVLIST_ALL          0xff
 
@@ -107,8 +107,10 @@ struct event;
 struct event_callback {
 	TAILQ_ENTRY(event_callback) evcb_active_next;
 	short evcb_flags;
-	ev_uint8_t evcb_pri;	/* smaller numbers are higher priority */
-	ev_uint8_t evcb_closure;
+	ev_uint8_t evcb_pri;	/* smaller numbers are higher priority, 值越小, 优先级越高 */
+	ev_uint8_t evcb_closure;/* 作用是告之事件处理时调用不同的处理函数 */
+                            /* evcb_closure 可被赋予的枚举值, 比如 EV_CLOSURE_EVENT_SIGNAL  */
+    
 	/* allows us to adopt for different types of events */
         union {
 		void (*evcb_callback)(evutil_socket_t, short, void *);
@@ -118,16 +120,47 @@ struct event_callback {
 	} evcb_cb_union;
 	void *evcb_arg;
 };
+/** 结构体的解释 struct event_callback {}
+
+  ev_flags  ( = evcb_flags ) 设置周期 :
+  f1.在 event_assign 函数（大部分事件初始化都是在该函数中）中, 
+     ev_flags 被初始化为    EVLIST_INIT     
+     
+  f2.在 event_add_internal 里调用 event_queue_insert(base,ev, EVLIST_INSERTED), 在函数 event_queue_insert 中
+     ev_flags 被设置为      EVLIST_INIT| EVLIST_INSERTED     
+     
+  f3.当事件被激活时调用 event_active_nolock 函数, 该函数内部再次调用 event_queue_insert(base, ev, EVLIST_ACTIVE);
+     ev_flags 被设置为      EVLIST_INIT| EVLIST_INSERTED| EVLIST_ACTIVE     
+     
+  f4.在事件执行的时候在 event_process_active_single_queue 中, 调用 event_queue_remove(base,ev, EVLIST_ACTIVE);
+     通过 ev->ev_flags&= ~queue 语句,将取消 '激活状态'. 此时 
+     ev_flags 被设置为      EVLIST_INIT| EVLIST_INSERTED
+     
+  f5.当端口结束工作时,会调用 event_del(struct event *ev), 该函数调用 event_del_internal(ev),
+     在event_del_internal中会将该事件从哈希表和所有的事件队列中删除, 此时
+     ev_flags被重新设置为   EVLIST_INIT
+  综上, ev_flags 的作用主要是指出当前的 event 处于何种状态, 则相应的函数就可以根据该状态做出处理; 
+  eg. 函数 event_del_internal() 中可以判断该事件如果激活, 则从激活队列中删除; 如果是已经插入, 则还要从插入队列中删除.
+
+ */
+
 
 struct event_base;
 /* event handler */
 struct event {
-	struct event_callback ev_evcallback; /* event 的回调函数, 被 ev_base 调用, 执行事件处理函数 */
+    /*
+     * (1) ev_evcallback 是 event 的回调函数, 被 ev_base 调用, 执行事件处理函数.
+     * (2) ev_flags 在文件 event-internal.h 是个宏定义 
+     *    代码中会使用 ev->ev_flags 代替 ev->ev_evcallback.evcb_flags 的调用.
+     * (3) ev_closure 在文件 event-internal.h 是个宏定义
+     *    代码中会使用 ev->ev_closure 代替 ev->ev_evcallback.ev_closure 的调用.
+     */
+	struct event_callback ev_evcallback;                                        
 
-	/* for managing timeouts */
+	/* for managing timeouts, 最小堆 */
 	union {
 		TAILQ_ENTRY(event) ev_next_with_common_timeout;
-		int min_heap_idx;
+		int min_heap_idx; /* 元素在堆中的 index */
 	} ev_timeout_pos;
 	evutil_socket_t ev_fd; /* 对于 I/O 事件,是绑定的文件描述符; 对于 signal 事件,是绑定的信号 */
 
@@ -149,7 +182,7 @@ struct event {
 		} ev_signal;
 	} ev_;
 
-	short ev_events; /* 事件类型: I/O事件, 定时事件(EV_TIMEOUT, 0x01), 信号事件( EV_SIGNAL ) */
+	short ev_events; /* 事件类型: I/O事件, 定时事件(EV_TIMEOUT, 0x01), 信号事件( EV_SIGNAL ), 永久事件( EV_PERSIST ) */
 	short ev_res;	 /* result passed to event callback , 记录了当前激活事件的类型 */
 	struct timeval ev_timeout;
 };

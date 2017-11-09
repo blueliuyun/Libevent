@@ -240,7 +240,7 @@ struct event_base {
 	int event_count;
 	/** Maximum number of total events added to this event_base */
 	int event_count_max;
-	/** Number of total events active in this event_base */
+	/** Number of total events active in this event_base, 当前的 event_base 中包含的 active event 个数 */
 	int event_count_active;
 	/** Maximum number of total events active in this event_base */
 	int event_count_active_max;
@@ -303,7 +303,8 @@ struct event_base {
 
 	/** Stored timeval: used to avoid calling gettimeofday/clock_gettime
 	 * too often. */
-	/** 用于时间管理的变量 */ 
+	/** 用于时间管理的变量, 记录时间缓存;
+	 * 设置时间缓存的优点是不必每次获得时间都执行系统调用, 因为这个系统相对耗时间  */ 
 	struct timeval tv_cache;
 
 	struct evutil_monotonic_timer monotonic_timer;
