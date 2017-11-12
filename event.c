@@ -2587,8 +2587,9 @@ event_add_nolock_(struct event *ev, const struct timeval *tv,
     int tv_is_absolute)
 {
     /*
-     * struct event *ev [in] 指向要注册的事件
-     * const struct timeval *tv [in] 超时时间
+     * 形参 struct event *ev [in] 指向要注册的事件
+     * 形参 const struct timeval *tv [in] 超时时间
+     * 
      * 函数将 ev 注册到 ev->ev_base 上, 事件类型由 ev->ev_events 指明,
      * 如果注册成功, ev 将被插入到已注册链表中; 如果 tv 不是 NULL ,则
      * 会同时注册定时事件, 将 ev 添加到 timer 堆上.

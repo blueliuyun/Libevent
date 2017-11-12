@@ -256,8 +256,8 @@ evbuffer_free_all_chains(struct evbuffer_chain *chain)
 {
 	struct evbuffer_chain *next;
 	for (; chain; chain = next) {
-		next = chain->next;
-		evbuffer_chain_free(chain);
+		next = chain->next;         /* chain 向下挪动  */
+		evbuffer_chain_free(chain); /**/
 	}
 }
 
@@ -360,6 +360,9 @@ evbuffer_chain_incref(struct evbuffer_chain *chain)
 struct evbuffer *
 evbuffer_new(void)
 {
+    /*
+     * 为 evbuffer 申请空间并返回申请到的空间首地址
+     */
 	struct evbuffer *buffer;
 
 	buffer = mm_calloc(1, sizeof(struct evbuffer));
@@ -960,9 +963,13 @@ PREPEND_CHAIN(struct evbuffer *dst, struct evbuffer *src)
 int
 evbuffer_add_buffer(struct evbuffer *outbuf, struct evbuffer *inbuf)
 {
+    /*
+     * 函数的作用 : 将一个缓冲区移接到另一个缓冲区末尾.
+     * 实质上是调用 evbuffer_add 添加数据到 outbuf, 若执行成功, 然后清除 inbuf 中的数据.
+     */
 	struct evbuffer_chain *pinned, *last;
 	size_t in_total_len, out_total_len;
-	int result = 0;
+	int result = 0; /* 返回值, 0表示成功, -1表示失败 */
 
 	EVBUFFER_LOCK2(inbuf, outbuf);
 	in_total_len = inbuf->total_len;
@@ -985,8 +992,10 @@ evbuffer_add_buffer(struct evbuffer *outbuf, struct evbuffer *inbuf)
 		/* There might be an empty chain at the start of outbuf; free
 		 * it. */
 		evbuffer_free_all_chains(outbuf->first);
+        /* 若 outbuf 长度是 0, 则直接将 inbuf 赋值给 outbuf */
 		COPY_CHAIN(outbuf, inbuf);
 	} else {
+	    /* 若 outbuf 长度非 0, 则将 inbuf 缓冲区接在 outbuf 末尾  */
 		APPEND_CHAIN(outbuf, inbuf);
 	}
 
@@ -1095,6 +1104,9 @@ done:
 int
 evbuffer_drain(struct evbuffer *buf, size_t len)
 {
+    /*
+     * 清除一部分或整个缓冲区.
+     */
 	struct evbuffer_chain *chain, *next;
 	size_t remaining, old_len;
 	int result = 0;
