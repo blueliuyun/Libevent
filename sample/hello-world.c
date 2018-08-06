@@ -6,6 +6,10 @@
   Where possible, it exits cleanly in response to a SIGINT (ctrl-c).
 */
 
+/*
+ * 当客户端链接到服务器的时候，服务器简单地向客户端发送一条“Hello, World!”消息，然后等待客户端关闭
+ * 服务器不接受客户端发送的数据
+ */
 
 #include <string.h>
 #include <errno.h>
@@ -29,25 +33,38 @@ static const char MESSAGE[] = "Hello, World!\n";
 
 static const int PORT = 9995;
 
+// 监听回调函数（即一个新链接到来的时候的回调函数）
 static void listener_cb(struct evconnlistener *, evutil_socket_t,
     struct sockaddr *, int socklen, void *);
+	
+// 写回调函数
 static void conn_writecb(struct bufferevent *, void *);
+
+// 客户端关闭回调函数
 static void conn_eventcb(struct bufferevent *, short, void *);
+
+//信号处理函数
 static void signal_cb(evutil_socket_t, short, void *);
 
 int
 main(int argc, char **argv)
 {
+	// event_base对象（即Reactor实例）
 	struct event_base *base;
 	struct evconnlistener *listener;
+	// 信号事件处理器
 	struct event *signal_event;
 
+	// 鍦板潃
 	struct sockaddr_in sin;
+	
+	// 如果是windows环境，再调用socket相关函数之前需要进行动态库初始化
 #ifdef _WIN32
 	WSADATA wsa_data;
 	WSAStartup(0x0201, &wsa_data);
 #endif
 
+	// 创建一个event_base实例（即一个Reactor实例）
 	base = event_base_new();
 	if (!base) {
 		fprintf(stderr, "Could not initialize libevent!\n");
@@ -58,6 +75,8 @@ main(int argc, char **argv)
 	sin.sin_family = AF_INET;
 	sin.sin_port = htons(PORT);
 
+	// 第 1 个实参表示 : 所属的event_base对象
+	// 第 4 个实参是标志 : 地址可复用，调用exec的时候关闭套接字
 	listener = evconnlistener_new_bind(base, listener_cb, (void *)base,
 	    LEV_OPT_REUSEABLE|LEV_OPT_CLOSE_ON_FREE, -1,
 	    (struct sockaddr*)&sin,
@@ -70,15 +89,22 @@ main(int argc, char **argv)
 
 	signal_event = evsignal_new(base, SIGINT, signal_cb, (void *)base);
 
+	// 将事件处理器添加到event_base的事件处理器注册队列中.
 	if (!signal_event || event_add(signal_event, NULL)<0) {
 		fprintf(stderr, "Could not create/add a signal event!\n");
 		return 1;
 	}
 
+	// 进入循环
 	event_base_dispatch(base);
 
+    // 释放监听器
 	evconnlistener_free(listener);
+
+	// 释放事件处理器
 	event_free(signal_event);
+
+	// 释放 event_base 对象
 	event_base_free(base);
 
 	printf("done\n");
@@ -90,8 +116,11 @@ listener_cb(struct evconnlistener *listener, evutil_socket_t fd,
     struct sockaddr *sa, int socklen, void *user_data)
 {
 	struct event_base *base = user_data;
+	// 缓冲区
 	struct bufferevent *bev;
 
+    // 基于套接字创建一个缓冲区（套接字接收到数据之后存放在缓冲区中,
+    // 套接字在发送数据之前先将数据存放在缓冲区中）
 	bev = bufferevent_socket_new(base, fd, BEV_OPT_CLOSE_ON_FREE);
 	if (!bev) {
 		fprintf(stderr, "Error constructing bufferevent!");
@@ -99,18 +128,27 @@ listener_cb(struct evconnlistener *listener, evutil_socket_t fd,
 		return;
 	}
 	bufferevent_setcb(bev, NULL, conn_writecb, conn_eventcb, NULL);
+
+	// 启用缓存区的写功能
 	bufferevent_enable(bev, EV_WRITE);
+
+	// 禁用缓冲区的读功能
 	bufferevent_disable(bev, EV_READ);
 
+	// 缓冲区写
 	bufferevent_write(bev, MESSAGE, strlen(MESSAGE));
 }
 
 static void
 conn_writecb(struct bufferevent *bev, void *user_data)
 {
+	// 输出buffer
 	struct evbuffer *output = bufferevent_get_output(bev);
+
+	// 判断数据是否已经发送完成
 	if (evbuffer_get_length(output) == 0) {
 		printf("flushed answer\n");
+		// 释放缓冲区
 		bufferevent_free(bev);
 	}
 }
@@ -119,8 +157,10 @@ static void
 conn_eventcb(struct bufferevent *bev, short events, void *user_data)
 {
 	if (events & BEV_EVENT_EOF) {
+		// 客户端关闭
 		printf("Connection closed.\n");
 	} else if (events & BEV_EVENT_ERROR) {
+		// 在连接上产生一个错误
 		printf("Got an error on the connection: %s\n",
 		    strerror(errno));/*XXX win32*/
 	}
@@ -137,5 +177,6 @@ signal_cb(evutil_socket_t sig, short events, void *user_data)
 
 	printf("Caught an interrupt signal; exiting cleanly in two seconds.\n");
 
+	// 退出事件循环
 	event_base_loopexit(base, &delay);
 }
