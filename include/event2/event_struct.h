@@ -55,13 +55,13 @@ extern "C" {
 #include <event2/keyvalq_struct.h>
 
 #define EVLIST_TIMEOUT	    0x01
-#define EVLIST_INSERTED	    0x02 /* ÊÂ¼şÒÑ¾­²åÈëµ½ÊÂ¼şÁĞ±íÖĞ */
+#define EVLIST_INSERTED	    0x02 /* äº‹ä»¶å·²ç»æ’å…¥åˆ°äº‹ä»¶åˆ—è¡¨ä¸­ */
 #define EVLIST_SIGNAL	    0x04
-#define EVLIST_ACTIVE	    0x08 /* ÊÂ¼ş´¦ÓÚ¼¤»î×´Ì¬ */
-#define EVLIST_INTERNAL	    0x10 /* ÄÚ²¿ÊÂ¼ş, ºöÂÔ */
+#define EVLIST_ACTIVE	    0x08 /* äº‹ä»¶å¤„äºæ¿€æ´»çŠ¶æ€ */
+#define EVLIST_INTERNAL	    0x10 /* å†…éƒ¨äº‹ä»¶, å¿½ç•¥ */
 #define EVLIST_ACTIVE_LATER 0x20
 #define EVLIST_FINALIZING   0x40 
-#define EVLIST_INIT	        0x80 /* ÊÂ¼şÒÑ¾­³õÊ¼»¯ */
+#define EVLIST_INIT	        0x80 /* äº‹ä»¶å·²ç»åˆå§‹åŒ– */
 
 #define EVLIST_ALL          0xff
 
@@ -107,9 +107,9 @@ struct event;
 struct event_callback {
 	TAILQ_ENTRY(event_callback) evcb_active_next;
 	short evcb_flags;
-	ev_uint8_t evcb_pri;	/* smaller numbers are higher priority, ÖµÔ½Ğ¡, ÓÅÏÈ¼¶Ô½¸ß */
-	ev_uint8_t evcb_closure;/* ×÷ÓÃÊÇ¸æÖ®ÊÂ¼ş´¦ÀíÊ±µ÷ÓÃ²»Í¬µÄ´¦Àíº¯Êı */
-                            /* evcb_closure ¿É±»¸³ÓèµÄÃ¶¾ÙÖµ, ±ÈÈç EV_CLOSURE_EVENT_SIGNAL  */
+	ev_uint8_t evcb_pri;	/* smaller numbers are higher priority, å€¼è¶Šå°, ä¼˜å…ˆçº§è¶Šé«˜ */
+	ev_uint8_t evcb_closure;/* ä½œç”¨æ˜¯å‘Šä¹‹äº‹ä»¶å¤„ç†æ—¶è°ƒç”¨ä¸åŒçš„å¤„ç†å‡½æ•° */
+                            /* evcb_closure å¯è¢«èµ‹äºˆçš„æšä¸¾å€¼, æ¯”å¦‚ EV_CLOSURE_EVENT_SIGNAL  */
     
 	/* allows us to adopt for different types of events */
         union {
@@ -120,27 +120,27 @@ struct event_callback {
 	} evcb_cb_union;
 	void *evcb_arg;
 };
-/** ½á¹¹ÌåµÄ½âÊÍ struct event_callback {}
+/** ç»“æ„ä½“çš„è§£é‡Š struct event_callback {}
 
-  ev_flags  ( = evcb_flags ) ÉèÖÃÖÜÆÚ :
-  f1.ÔÚ event_assign º¯Êı£¨´ó²¿·ÖÊÂ¼ş³õÊ¼»¯¶¼ÊÇÔÚ¸Ãº¯ÊıÖĞ£©ÖĞ, 
-     ev_flags ±»³õÊ¼»¯Îª    EVLIST_INIT     
+  ev_flags  ( = evcb_flags ) è®¾ç½®å‘¨æœŸ :
+  f1.åœ¨ event_assign å‡½æ•°ï¼ˆå¤§éƒ¨åˆ†äº‹ä»¶åˆå§‹åŒ–éƒ½æ˜¯åœ¨è¯¥å‡½æ•°ä¸­ï¼‰ä¸­, 
+     ev_flags è¢«åˆå§‹åŒ–ä¸º    EVLIST_INIT     
      
-  f2.ÔÚ event_add_internal Àïµ÷ÓÃ event_queue_insert(base,ev, EVLIST_INSERTED), ÔÚº¯Êı event_queue_insert ÖĞ
-     ev_flags ±»ÉèÖÃÎª      EVLIST_INIT| EVLIST_INSERTED     
+  f2.åœ¨ event_add_internal é‡Œè°ƒç”¨ event_queue_insert(base,ev, EVLIST_INSERTED), åœ¨å‡½æ•° event_queue_insert ä¸­
+     ev_flags è¢«è®¾ç½®ä¸º      EVLIST_INIT| EVLIST_INSERTED     
      
-  f3.µ±ÊÂ¼ş±»¼¤»îÊ±µ÷ÓÃ event_active_nolock º¯Êı, ¸Ãº¯ÊıÄÚ²¿ÔÙ´Îµ÷ÓÃ event_queue_insert(base, ev, EVLIST_ACTIVE);
-     ev_flags ±»ÉèÖÃÎª      EVLIST_INIT| EVLIST_INSERTED| EVLIST_ACTIVE     
+  f3.å½“äº‹ä»¶è¢«æ¿€æ´»æ—¶è°ƒç”¨ event_active_nolock å‡½æ•°, è¯¥å‡½æ•°å†…éƒ¨å†æ¬¡è°ƒç”¨ event_queue_insert(base, ev, EVLIST_ACTIVE);
+     ev_flags è¢«è®¾ç½®ä¸º      EVLIST_INIT| EVLIST_INSERTED| EVLIST_ACTIVE     
      
-  f4.ÔÚÊÂ¼şÖ´ĞĞµÄÊ±ºòÔÚ event_process_active_single_queue ÖĞ, µ÷ÓÃ event_queue_remove(base,ev, EVLIST_ACTIVE);
-     Í¨¹ı ev->ev_flags&= ~queue Óï¾ä,½«È¡Ïû '¼¤»î×´Ì¬'. ´ËÊ± 
-     ev_flags ±»ÉèÖÃÎª      EVLIST_INIT| EVLIST_INSERTED
+  f4.åœ¨äº‹ä»¶æ‰§è¡Œçš„æ—¶å€™åœ¨ event_process_active_single_queue ä¸­, è°ƒç”¨ event_queue_remove(base,ev, EVLIST_ACTIVE);
+     é€šè¿‡ ev->ev_flags&= ~queue è¯­å¥,å°†å–æ¶ˆ 'æ¿€æ´»çŠ¶æ€'. æ­¤æ—¶ 
+     ev_flags è¢«è®¾ç½®ä¸º      EVLIST_INIT| EVLIST_INSERTED
      
-  f5.µ±¶Ë¿Ú½áÊø¹¤×÷Ê±,»áµ÷ÓÃ event_del(struct event *ev), ¸Ãº¯Êıµ÷ÓÃ event_del_internal(ev),
-     ÔÚevent_del_internalÖĞ»á½«¸ÃÊÂ¼ş´Ó¹şÏ£±íºÍËùÓĞµÄÊÂ¼ş¶ÓÁĞÖĞÉ¾³ı, ´ËÊ±
-     ev_flags±»ÖØĞÂÉèÖÃÎª   EVLIST_INIT
-  ×ÛÉÏ, ev_flags µÄ×÷ÓÃÖ÷ÒªÊÇÖ¸³öµ±Ç°µÄ event ´¦ÓÚºÎÖÖ×´Ì¬, ÔòÏàÓ¦µÄº¯Êı¾Í¿ÉÒÔ¸ù¾İ¸Ã×´Ì¬×ö³ö´¦Àí; 
-  eg. º¯Êı event_del_internal() ÖĞ¿ÉÒÔÅĞ¶Ï¸ÃÊÂ¼şÈç¹û¼¤»î, Ôò´Ó¼¤»î¶ÓÁĞÖĞÉ¾³ı; Èç¹ûÊÇÒÑ¾­²åÈë, Ôò»¹Òª´Ó²åÈë¶ÓÁĞÖĞÉ¾³ı.
+  f5.å½“ç«¯å£ç»“æŸå·¥ä½œæ—¶,ä¼šè°ƒç”¨ event_del(struct event *ev), è¯¥å‡½æ•°è°ƒç”¨ event_del_internal(ev),
+     åœ¨event_del_internalä¸­ä¼šå°†è¯¥äº‹ä»¶ä»å“ˆå¸Œè¡¨å’Œæ‰€æœ‰çš„äº‹ä»¶é˜Ÿåˆ—ä¸­åˆ é™¤, æ­¤æ—¶
+     ev_flagsè¢«é‡æ–°è®¾ç½®ä¸º   EVLIST_INIT
+  ç»¼ä¸Š, ev_flags çš„ä½œç”¨ä¸»è¦æ˜¯æŒ‡å‡ºå½“å‰çš„ event å¤„äºä½•ç§çŠ¶æ€, åˆ™ç›¸åº”çš„å‡½æ•°å°±å¯ä»¥æ ¹æ®è¯¥çŠ¶æ€åšå‡ºå¤„ç†; 
+  eg. å‡½æ•° event_del_internal() ä¸­å¯ä»¥åˆ¤æ–­è¯¥äº‹ä»¶å¦‚æœæ¿€æ´», åˆ™ä»æ¿€æ´»é˜Ÿåˆ—ä¸­åˆ é™¤; å¦‚æœæ˜¯å·²ç»æ’å…¥, åˆ™è¿˜è¦ä»æ’å…¥é˜Ÿåˆ—ä¸­åˆ é™¤.
 
  */
 
@@ -149,20 +149,23 @@ struct event_base;
 /* event handler */
 struct event {
     /*
-     * (1) ev_evcallback ÊÇ event µÄ»Øµ÷º¯Êı, ±» ev_base µ÷ÓÃ, Ö´ĞĞÊÂ¼ş´¦Àíº¯Êı.
-     * (2) ev_flags ÔÚÎÄ¼ş event-internal.h ÊÇ¸öºê¶¨Òå 
-     *    ´úÂëÖĞ»áÊ¹ÓÃ ev->ev_flags ´úÌæ ev->ev_evcallback.evcb_flags µÄµ÷ÓÃ.
-     * (3) ev_closure ÔÚÎÄ¼ş event-internal.h ÊÇ¸öºê¶¨Òå
-     *    ´úÂëÖĞ»áÊ¹ÓÃ ev->ev_closure ´úÌæ ev->ev_evcallback.ev_closure µÄµ÷ÓÃ.
+     * (1) ev_evcallback æ˜¯ event çš„å›è°ƒå‡½æ•°, è¢« ev_base è°ƒç”¨, æ‰§è¡Œäº‹ä»¶å¤„ç†å‡½æ•°.
+     * (2) ev_flags åœ¨æ–‡ä»¶ event-internal.h æ˜¯ä¸ªå®å®šä¹‰ 
+     *    ä»£ç ä¸­ä¼šä½¿ç”¨ ev->ev_flags ä»£æ›¿ ev->ev_evcallback.evcb_flags çš„è°ƒç”¨.
+     * (3) ev_closure åœ¨æ–‡ä»¶ event-internal.h æ˜¯ä¸ªå®å®šä¹‰
+     *    ä»£ç ä¸­ä¼šä½¿ç”¨ ev->ev_closure ä»£æ›¿ ev->ev_evcallback.ev_closure çš„è°ƒç”¨.
      */
 	struct event_callback ev_evcallback;                                        
 
-	/* for managing timeouts, ×îĞ¡¶Ñ */
+	/* for managing timeouts, æœ€å°å † */
 	union {
 		TAILQ_ENTRY(event) ev_next_with_common_timeout;
-		int min_heap_idx; /* ÔªËØÔÚ¶ÑÖĞµÄ index */
+		int min_heap_idx; /* å…ƒç´ åœ¨å †ä¸­çš„ index */
 	} ev_timeout_pos;
-	evutil_socket_t ev_fd; /* ¶ÔÓÚ I/O ÊÂ¼ş,ÊÇ°ó¶¨µÄÎÄ¼şÃèÊö·û; ¶ÔÓÚ signal ÊÂ¼ş,ÊÇ°ó¶¨µÄĞÅºÅ */
+	evutil_socket_t ev_fd; /* å¯¹äº I/O äº‹ä»¶,æ˜¯ç»‘å®šçš„æ–‡ä»¶æè¿°ç¬¦; å¯¹äº signal äº‹ä»¶,æ˜¯ç»‘å®šçš„ä¿¡å· */
+
+	short ev_events;	/* äº‹ä»¶ç±»å‹: I/Oäº‹ä»¶, å®šæ—¶äº‹ä»¶(EV_TIMEOUT, 0x01), ä¿¡å·äº‹ä»¶( EV_SIGNAL ), æ°¸ä¹…äº‹ä»¶( EV_PERSIST ) */
+	short ev_res;		/* result passed to event callback, è®°å½•äº†å½“å‰æ¿€æ´»äº‹ä»¶çš„ç±»å‹ */
 
 	struct event_base *ev_base;
 
@@ -176,14 +179,12 @@ struct event {
 		/* used by signal events */
 		struct {
 			LIST_ENTRY (event) ev_signal_next; /* doubule linked list */
-			short ev_ncalls;   /* ÊÂ¼ş¾ÍĞ÷Ö´ĞĞÊ±,µ÷ÓÃ ev_callback µÄ´ÎÊı,Í¨³£Îª1 */
+			short ev_ncalls;   /* äº‹ä»¶å°±ç»ªæ‰§è¡Œæ—¶,è°ƒç”¨ ev_callback çš„æ¬¡æ•°,é€šå¸¸ä¸º1 */
 			/* Allows deletes in callback */
-			short *ev_pncalls; /* Ö¸Õë,Í¨³£Ö¸Ïò ev_ncalls »òÕßÎª NULL */
+			short *ev_pncalls; /* æŒ‡é’ˆ,é€šå¸¸æŒ‡å‘ ev_ncalls æˆ–è€…ä¸º NULL */
 		} ev_signal;
 	} ev_;
 
-	short ev_events; /* ÊÂ¼şÀàĞÍ: I/OÊÂ¼ş, ¶¨Ê±ÊÂ¼ş(EV_TIMEOUT, 0x01), ĞÅºÅÊÂ¼ş( EV_SIGNAL ), ÓÀ¾ÃÊÂ¼ş( EV_PERSIST ) */
-	short ev_res;	 /* result passed to event callback , ¼ÇÂ¼ÁËµ±Ç°¼¤»îÊÂ¼şµÄÀàĞÍ */
 	struct timeval ev_timeout;
 };
 

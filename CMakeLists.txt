@@ -23,7 +23,10 @@ if (APPLE)
 else()
     cmake_minimum_required(VERSION 2.8.3 FATAL_ERROR)
 endif()
-cmake_policy(SET CMP0054 NEW)
+
+if (POLICY CMP0054)
+    cmake_policy(SET CMP0054 NEW)
+endif()
 
 if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Release
@@ -409,7 +412,7 @@ endif()
 check_function_keywords("inline" "__inline" "__inline__")
 
 if (HAVE_INLINE)
-    set (EVENT__inline inline)
+    set(EVENT__inline inline)
 elseif (HAVE___INLINE)
     set(EVENT__inline __inline)
 elseif(HAVE___INLINE__)
@@ -417,6 +420,10 @@ elseif(HAVE___INLINE__)
 else()
     set(EVENT__inline)
 endif()
+
+# __func__/__FUNCTION__ is not a macros in general
+CHECK_SYMBOL_EXISTS("__func__"     "" EVENT__HAVE___func__)
+CHECK_SYMBOL_EXISTS("__FUNCTION__" "" EVENT__HAVE___FUNCTION__)
 
 CHECK_SYMBOL_EXISTS(TAILQ_FOREACH sys/queue.h EVENT__HAVE_TAILQFOREACH)
 CHECK_CONST_EXISTS(CTL_KERN sys/sysctl.h EVENT__HAVE_DECL_CTL_KERN)
@@ -427,7 +434,7 @@ CHECK_SYMBOL_EXISTS(F_SETFD fcntl.h EVENT__HAVE_SETFD)
 
 CHECK_TYPE_SIZE(fd_mask EVENT__HAVE_FD_MASK)
 
-CHECK_TYPE_SIZE(size_t EVENT__SIZEOF_SIZEE_T)
+CHECK_TYPE_SIZE(size_t EVENT__SIZEOF_SIZE_T)
 if(NOT EVENT__SIZEOF_SIZE_T)
   set(EVENT__size_t "unsigned")
   set(EVENT__SIZEOF_SIZE_T ${EVENT__SIZEOF_UNSIGNED})
@@ -468,10 +475,8 @@ endif()
 
 CHECK_TYPE_SIZE(pid_t EVENT__SIZEOF_PID_T)
 if(NOT EVENT__SIZEOF_PID_T)
-  set(EVENT__pid_t "int")
   set(EVENT__SIZEOF_PID_T ${EVENT__SIZEOF_INT})
 else()
-	set(EVENT__pid_t "pid_t")
 	set(EVENT__SIZEOF_PID_T EVENT__SIZEOF_PID_T)
 endif()
 
@@ -511,10 +516,6 @@ if (EVENT__HAVE_KQUEUE)
         include(CheckWorkingKqueue)
     endif()
 endif()
-
-CHECK_SYMBOL_EXISTS(_MINIX "stdio.h" EVENT___MINIX)
-CHECK_SYMBOL_EXISTS(_POSIX_1_SOURCE "stdio.h" EVENT___POSIX_1_SOURCE)
-CHECK_SYMBOL_EXISTS(_POSIX_SOURCE "stdio.h" EVENT___POSIX_SOURCE)
 
 if(EVENT__HAVE_NETDB_H)
     list(APPEND CMAKE_EXTRA_INCLUDE_FILES netdb.h)
@@ -1321,11 +1322,11 @@ file(RELATIVE_PATH
      "${EVENT_INSTALL_CMAKE_DIR}"
      "${CMAKE_INSTALL_PREFIX}/include")
 
-# Note the EVENT_CMAKE_DIR is defined in LibeventConfig.cmake.in,
+# Note the LIBEVENT_CMAKE_DIR is defined in LibeventConfig.cmake.in,
 # we escape it here so it's evaluated when it is included instead
-# so that the include dirs are givenrelative to where the
+# so that the include dirs are given relative to where the
 # config file is located.
-set(EVENT__INCLUDE_DIRS "\${EVENT_CMAKE_DIR}/${REL_INCLUDE_DIR}")
+set(EVENT_INSTALL_INCLUDE_DIR "\${LIBEVENT_CMAKE_DIR}/${REL_INCLUDE_DIR}")
 
 configure_file(${PROJECT_SOURCE_DIR}/cmake/LibeventConfig.cmake.in
                ${PROJECT_BINARY_DIR}${CMAKE_FILES_DIRECTORY}/LibeventConfig.cmake

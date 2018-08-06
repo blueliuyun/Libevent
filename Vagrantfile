@@ -360,8 +360,8 @@ Vagrant.configure("2") do |config|
 
         $env:PATH="/tools/cygwin/bin;$($env:PATH);/tools/cygwin"
 
-        cygwinsetup --root c:/tools/cygwin/ --local-package-dir c:/tools/cygwin/packages/ --no-desktop --no-startmenu --verbose --quiet-mode --download --packages automake,autoconf,gcc-core,libtool,make,python,openssl-devel
-        cygwinsetup --root c:/tools/cygwin/ --local-package-dir c:/tools/cygwin/packages/ --no-desktop --no-startmenu --verbose --quiet-mode --local-install --packages automake,autoconf,gcc-core,libtool,make,python,openssl-devel
+        cygwinsetup --root c:/tools/cygwin/ --local-package-dir c:/tools/cygwin/packages/ --no-desktop --no-startmenu --verbose --quiet-mode --download --packages aclocal,automake,autoconf,gcc-core,libtool,make,python,openssl-devel
+        cygwinsetup --root c:/tools/cygwin/ --local-package-dir c:/tools/cygwin/packages/ --no-desktop --no-startmenu --verbose --quiet-mode --local-install --packages aclocal,automake,autoconf,gcc-core,libtool,make,python,openssl-devel
       SHELL
     end
 
@@ -393,7 +393,7 @@ Vagrant.configure("2") do |config|
         bash -lc "echo 'C:/OpenSSL-Win32 /ssl ntfs binary 0 0' >> /etc/fstab"
         bash -lc "echo 'C:/vagrant /vagrant ntfs binary 0 0' >> /etc/fstab"
 
-        bash -lc "exec 0</dev/null; exec 2>&1; cd /vagrant; bash -x ./autogen.sh && ./configure LDFLAGS='-L/ssl -L/ssl/lib -L/ssl/lib/MinGW' CFLAGS=-I/ssl/include && make -j20 verify"
+        bash -lc "exec 0</dev/null; exec 2>&1; cd /vagrant; bash -x ./autogen.sh && ./configure LDFLAGS='-L/ssl -L/ssl/lib -L/ssl/lib/MinGW' CFLAGS=-I/ssl/include && make verify"
       SHELL
     end
   end

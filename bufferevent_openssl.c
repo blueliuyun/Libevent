@@ -63,7 +63,6 @@
 #include "bufferevent-internal.h"
 #include "log-internal.h"
 
-#include <openssl/bio.h>
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 #include "openssl-compat.h"
@@ -155,7 +154,7 @@ bio_bufferevent_read(BIO *b, char *out, int outlen)
 	return r;
 }
 
-/* Called to write data info the BIO */
+/* Called to write data into the BIO */
 static int
 bio_bufferevent_write(BIO *b, const char *in, int inlen)
 {

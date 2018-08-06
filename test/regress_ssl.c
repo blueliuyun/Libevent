@@ -53,7 +53,6 @@
 #include "tinytest.h"
 #include "tinytest_macros.h"
 
-#include <openssl/bio.h>
 #include <openssl/err.h>
 #include <openssl/pem.h>
 #include "openssl-compat.h"
@@ -186,7 +185,8 @@ get_ssl_ctx(void)
 void
 init_ssl(void)
 {
-#if (OPENSSL_VERSION_NUMBER < 0x10100000L) || defined(LIBRESSL_VERSION_NUMBER)
+#if (OPENSSL_VERSION_NUMBER < 0x10100000L) || \
+	(defined(LIBRESSL_VERSION_NUMBER) && LIBRESSL_VERSION_NUMBER < 0x20700000L)
 	SSL_library_init();
 	ERR_load_crypto_strings();
 	SSL_load_error_strings();
