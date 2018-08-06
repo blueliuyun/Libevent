@@ -78,6 +78,9 @@ struct evbuffer_cb_entry {
 struct bufferevent;
 struct evbuffer_chain;
 struct evbuffer {
+    /**
+     * evbuffer{} 负责缓冲区的构建等操作.
+     */
 	/** The first chain in this buffer's linked list of chains. */
 	struct evbuffer_chain *first;
 	/** The last chain in this buffer's linked list of chains. */
@@ -167,12 +170,20 @@ typedef ev_off_t ev_misalign_t;
 #endif
 #endif
 
+/**
+ *                 buffer
+ *   --------------------------------------------------------------------
+ *  |                |###############|                                  |
+ *   ------------------------------------------------------------------
+ *  | <- misalign -> |  <-  off  ->  |                                  |
+ *  |   <-   -  -   -   -   -   buffer_len    -    -     -   -   ->     |
+ */
 /** A single item in an evbuffer. */
 struct evbuffer_chain {
-	/** points to next buffer in the chain */
+	/** points to next buffer in the chain. */
 	struct evbuffer_chain *next;
 
-	/** total allocation available in the buffer field. */
+	/** total allocation available in the buffer field. 申请内存的整个大小. */
 	size_t buffer_len;
 
 	/** unused space at the beginning of buffer or an offset into a
@@ -182,6 +193,7 @@ struct evbuffer_chain {
 	/** Offset into buffer + misalign at which to start writing.
 	 * In other words, the total number of bytes actually stored
 	 * in buffer. */
+	/** 有效数据的长度. */ 
 	size_t off;
 
 	/** Set if special handling is required for this chain */
@@ -210,7 +222,7 @@ struct evbuffer_chain {
 	 * EVBUFFER_IMMUTABLE will be set in flags.  For sendfile, it
 	 * may point to NULL.
 	 */
-	unsigned char *buffer;
+	unsigned char *buffer; /* 当前有效缓冲区的起始地址 */
 };
 
 /** callback for a reference chain; lets us know what to do with it when

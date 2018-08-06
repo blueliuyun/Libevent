@@ -68,6 +68,9 @@ struct event_watermark {
   it is fairly volatile, and WILL change in future versions of the code.
 **/
 struct bufferevent {
+    /**
+     * bufferevent{} 主要负责管理输入输出缓冲区, 相当于是对 evbuffer{} 做的一层抽象.
+     */
 	/** Event base for which this bufferevent was created. */
 	struct event_base *ev_base;
 	/** Pointer to a table of function pointers to set up how this

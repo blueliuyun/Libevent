@@ -83,6 +83,12 @@ extern "C" {
 /** @} */
 
 /** Structure to define the backend of a given event_base. */
+/*
+ * @2017-11-02 TY
+ *  (1) 在 Libevent 中, 每一种 I/O demultiplex 机制的实现都需要提供这 5 个
+ *      函数接口, 来完成自身的初始化, 消耗释放, 事件注册, 事件删除, 事件分发.
+ *      
+ */
 struct eventop {
 	/** The name of this backend. */
 	const char *name;
@@ -91,7 +97,7 @@ struct eventop {
 	 * run the backend, and return it.  The returned pointer will get
 	 * stored by event_init into the event_base.evbase field.  On failure,
 	 * this function should return NULL. */
-	void *(*init)(struct event_base *);
+	void *(*init)(struct event_base *); /* 初始化 */
 	/** Enable reading/writing on a given fd or signal.  'events' will be
 	 * the events that we're trying to enable: one or more of EV_READ,
 	 * EV_WRITE, EV_SIGNAL, and EV_ET.  'old' will be those events that
@@ -100,17 +106,17 @@ struct eventop {
 	 * fdinfo field below.  It will be set to 0 the first time the fd is
 	 * added.  The function should return 0 on success and -1 on error.
 	 */
-	int (*add)(struct event_base *, evutil_socket_t fd, short old, short events, void *fdinfo);
+	int (*add)(struct event_base *, evutil_socket_t fd, short old, short events, void *fdinfo); /* 注册事件 */
 	/** As "add", except 'events' contains the events we mean to disable. */
-	int (*del)(struct event_base *, evutil_socket_t fd, short old, short events, void *fdinfo);
+	int (*del)(struct event_base *, evutil_socket_t fd, short old, short events, void *fdinfo); /* 删除事件 */
 	/** Function to implement the core of an event loop.  It must see which
 	    added events are ready, and cause event_active to be called for each
 	    active event (usually via event_io_active or such).  It should
 	    return 0 on success and -1 on error.
 	 */
-	int (*dispatch)(struct event_base *, struct timeval *);
+	int (*dispatch)(struct event_base *, struct timeval *); /* 事件分发 */
 	/** Function to clean up and free our data from the event_base. */
-	void (*dealloc)(struct event_base *);
+	void (*dealloc)(struct event_base *); /* 注销, 释放资源 */
 	/** Flag: set if we need to reinitialize the event base after we fork.
 	 */
 	int need_reinit;
@@ -205,12 +211,15 @@ struct event_once {
 	void *arg;
 };
 
+/*
+ * @2017-11-02 TY 事件处理框架
+ */
 struct event_base {
 	/** Function pointers and other data to describe this event_base's
 	 * backend. */
-	const struct eventop *evsel;
+	const struct eventop *evsel; /* 指针 evsel 指向了全局变量static const struct eventop *eventops[]中的一个 */
 	/** Pointer to backend-specific data. */
-	void *evbase;
+	void *evbase;                /* 指针 evbase 是一个 eventop实例对象, 即指向某个 select, poll 等的函数指针   */
 
 	/** List of changes to tell backend about at next dispatch.  Only used
 	 * by the O(1) backends. */
@@ -220,6 +229,7 @@ struct event_base {
 	 * uses for signals */
 	const struct eventop *evsigsel;
 	/** Data to implement the common signal handler code. */
+    /** sig 管理信号的结构体 */
 	struct evsig_info sig;
 
 	/** Number of virtual events */
@@ -230,7 +240,7 @@ struct event_base {
 	int event_count;
 	/** Maximum number of total events added to this event_base */
 	int event_count_max;
-	/** Number of total events active in this event_base */
+	/** Number of total events active in this event_base, 当前的 event_base 中包含的 active event 个数 */
 	int event_count_active;
 	/** Maximum number of total events active in this event_base */
 	int event_count_active_max;
@@ -261,7 +271,10 @@ struct event_base {
 	 * that have triggered, and whose callbacks need to be called).  Low
 	 * priority numbers are more important, and stall higher ones.
 	 */
-	struct evcallback_list *activequeues;
+    /** 二级指针, 可以看作是数组, 其中原始 activequeues[priority] 是一个链
+     * 表, 链表的每个结点指向一个优先级为 priority 的就绪事件 event. */
+	struct evcallback_list *activequeues; 
+                                          
 	/** The length of the activequeues array */
 	int nactivequeues;
 	/** A list of event_callbacks that should become active the next time
@@ -285,10 +298,13 @@ struct event_base {
 	struct event_signal_map sigmap;
 
 	/** Priority queue of events with timeouts. */
+    /** 管理定时器事件的小根堆 */
 	struct min_heap timeheap;
 
 	/** Stored timeval: used to avoid calling gettimeofday/clock_gettime
 	 * too often. */
+	/** 用于时间管理的变量, 记录时间缓存;
+	 * 设置时间缓存的优点是不必每次获得时间都执行系统调用, 因为这个系统相对耗时间  */ 
 	struct timeval tv_cache;
 
 	struct evutil_monotonic_timer monotonic_timer;
