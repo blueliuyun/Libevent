@@ -401,8 +401,8 @@ gettime(struct event_base *base, struct timeval *tp)
 	EVENT_BASE_ASSERT_LOCKED(base);
 
     /*
-     * Èç¹û tv_cache Ê±¼ä»º´æÒÑ¾­ÉèÖÃ, ¾ÍÖ±½ÓÊ¹ÓÃ, 
-     * ·ñÔòĞèÒª¼ÌĞøÔÙ´ÎÖ´ĞĞÏµÍ³µ÷ÓÃ»ñµÃÏµÍ³Ê±¼ä 
+     * å¦‚æœ tv_cache æ—¶é—´ç¼“å­˜å·²ç»è®¾ç½®, å°±ç›´æ¥ä½¿ç”¨, 
+     * å¦åˆ™éœ€è¦ç»§ç»­å†æ¬¡æ‰§è¡Œç³»ç»Ÿè°ƒç”¨è·å¾—ç³»ç»Ÿæ—¶é—´ 
      */
 	if (base->tv_cache.tv_sec) {
 		*tp = base->tv_cache;
@@ -416,7 +416,7 @@ gettime(struct event_base *base, struct timeval *tp)
 	if (base->last_updated_clock_diff + CLOCK_SYNC_INTERVAL
 	    < tp->tv_sec) {
 		struct timeval tv;
-		evutil_gettimeofday(&tv,NULL); /* È¡µÃÏµÍ³µ±Ç°µÄÊ±¼ä */
+		evutil_gettimeofday(&tv,NULL); /* å–å¾—ç³»ç»Ÿå½“å‰çš„æ—¶é—´ */
 		evutil_timersub(&tv, tp, &base->tv_clock_diff);
 		base->last_updated_clock_diff = tp->tv_sec;
 	}
@@ -449,7 +449,7 @@ event_base_gettimeofday_cached(struct event_base *base, struct timeval *tv)
 static inline void
 clear_time_cache(struct event_base *base)
 {
-    /* Çå¿ÕÊ±¼ä»º´æ */
+    /* æ¸…ç©ºæ—¶é—´ç¼“å­˜ */
 	base->tv_cache.tv_sec = 0;
 }
 
@@ -457,7 +457,7 @@ clear_time_cache(struct event_base *base)
 static inline void
 update_time_cache(struct event_base *base)
 {
-    /* ½« time cache ¸³ÖµÎªµ±Ç°ÏµÍ³Ê±¼ä */
+    /* å°† time cache èµ‹å€¼ä¸ºå½“å‰ç³»ç»Ÿæ—¶é—´ */
 	base->tv_cache.tv_sec = 0;
 	if (!(base->flags & EVENT_BASE_FLAG_NO_CACHE_TIME))
 	    gettime(base, &base->tv_cache);
@@ -1636,7 +1636,7 @@ event_process_active_single_queue(struct event_base *base,
 		if (evcb->evcb_flags & EVLIST_INIT) {
 			ev = event_callback_to_event(evcb);
 
-			if (ev->ev_events & EV_PERSIST || ev->ev_flags & EVLIST_FINALIZING) /* ÔÚÕâÀï ev->ev_flags µÈ¼ÛÓÚ ev->ev_evcallback.evcb_falg  */
+			if (ev->ev_events & EV_PERSIST || ev->ev_flags & EVLIST_FINALIZING) /* åœ¨è¿™é‡Œ ev->ev_flags ç­‰ä»·äº ev->ev_evcallback.evcb_falg  */
 				event_queue_remove_active(base, evcb);
 			else
 				event_del_nolock_(ev, EVENT_DEL_NOBLOCK);
@@ -1662,7 +1662,7 @@ event_process_active_single_queue(struct event_base *base,
 #ifndef EVENT__DISABLE_THREAD_SUPPORT
 		base->current_event_waiters = 0;
 #endif
-        /* evcb_closure ×÷ÓÃÊÇ¸æÖ®ÊÂ¼ş´¦ÀíÊ±µ÷ÓÃ²»Í¬µÄ´¦Àíº¯Êı */
+        /* evcb_closure ä½œç”¨æ˜¯å‘Šä¹‹äº‹ä»¶å¤„ç†æ—¶è°ƒç”¨ä¸åŒçš„å¤„ç†å‡½æ•° */
 		switch (evcb->evcb_closure) {
 		case EV_CLOSURE_EVENT_SIGNAL:
 			EVUTIL_ASSERT(ev != NULL);
@@ -1766,7 +1766,7 @@ event_process_active(struct event_base *base)
 		endtime = NULL;
 	}
 
-    /* »ñµÃ¾ÍĞ÷Á´±íÖĞÓĞ¾ÍĞ÷ÊÂ¼ş²¢ÇÒ¸ßÓÅÏÈ¼¶µÄ±íÍ· */
+    /* è·å¾—å°±ç»ªé“¾è¡¨ä¸­æœ‰å°±ç»ªäº‹ä»¶å¹¶ä¸”é«˜ä¼˜å…ˆçº§çš„è¡¨å¤´ */
 	for (i = 0; i < base->nactivequeues; ++i) {
 		if (TAILQ_FIRST(&base->activequeues[i]) != NULL) {
 			base->event_running_priority = i;
@@ -1915,7 +1915,7 @@ int
 event_base_loop(struct event_base *base, int flags)
 {
     /*
-     * Ö÷Ñ­»·, ´¦Àí¾ÍĞ÷µÄ IOÊÂ¼ş, SignalÊÂ¼ş, TimerÊÂ¼ş.
+     * ä¸»å¾ªç¯, å¤„ç†å°±ç»ªçš„ IOäº‹ä»¶, Signaläº‹ä»¶, Timeräº‹ä»¶.
      */
 	const struct eventop *evsel = base->evsel;
 	struct timeval tv;
@@ -1935,7 +1935,7 @@ event_base_loop(struct event_base *base, int flags)
 
 	base->running_loop = 1;
 
-    /* s1.Çå¿ÕÊ±¼ä»º´æ */
+    /* s1.æ¸…ç©ºæ—¶é—´ç¼“å­˜ */
 	clear_time_cache(base);
 
 	if (base->sig.ev_signal_added && base->sig.ev_n_signals_added)
@@ -1949,7 +1949,7 @@ event_base_loop(struct event_base *base, int flags)
 
 	base->event_gotterm = base->event_break = 0;
 
-    /* ÊÂ¼şÖ÷Ñ­»· */
+    /* äº‹ä»¶ä¸»å¾ªç¯ */
 	while (!done) {
 		base->event_continue = 0;
 		base->n_deferreds_queued = 0;
@@ -1963,23 +1963,23 @@ event_base_loop(struct event_base *base, int flags)
 			break;
 		}
 
-        /* ¸ù¾İ timer heap ÖĞÊÂ¼şµÄ×îĞ¡³¬Ê±Ê±¼ä, ¼ÆËãÏµÍ³ I/O demultiplexer µÄ×î´óµÈ´ıÊ±¼ä */
+        /* æ ¹æ® timer heap ä¸­äº‹ä»¶çš„æœ€å°è¶…æ—¶æ—¶é—´, è®¡ç®—ç³»ç»Ÿ I/O demultiplexer çš„æœ€å¤§ç­‰å¾…æ—¶é—´ */
 		tv_p = &tv;
 		if (!N_ACTIVE_CALLBACKS(base) && !(flags & EVLOOP_NONBLOCK)) {
-            /* ¸ù¾İ timer ÊÂ¼ş¼ÆËã evsel->dispatch µÄ×î´óµÈ´ıÊ±¼ä */
+            /* æ ¹æ® timer äº‹ä»¶è®¡ç®— evsel->dispatch çš„æœ€å¤§ç­‰å¾…æ—¶é—´ */
 			timeout_next(base, &tv_p);
 		} else {
 			/*
 			 * if we have active events, we just poll new events
 			 * without waiting.
-			 * ÓĞÎ´´¦ÀíµÄ¾ÍĞ÷ÊÂ¼ş, ¾ÍÈÃ I/O demultiplexer Á¢¼´·µ»Ø, ²»±Ø
-			 * µÈ´ı. Òò´Ë, ÔÚ Libevent ÖĞ, µÍÓÅÏÈ¼¶µÄ¾ÍĞ÷ÊÂ¼ş¿ÉÄÜ²»»á±»
-			 * Á¢¼´´¦Àí.
+			 * æœ‰æœªå¤„ç†çš„å°±ç»ªäº‹ä»¶, å°±è®© I/O demultiplexer ç«‹å³è¿”å›, ä¸å¿…
+			 * ç­‰å¾…. å› æ­¤, åœ¨ Libevent ä¸­, ä½ä¼˜å…ˆçº§çš„å°±ç»ªäº‹ä»¶å¯èƒ½ä¸ä¼šè¢«
+			 * ç«‹å³å¤„ç†.
 			 */
 			evutil_timerclear(&tv);
 		}
 
-		/* If we have no events, we just exit , Èç¹ûµ±Ç°Ã»ÓĞ×¢²áÊÂ¼ş,¾ÍÍË³ö */
+		/* If we have no events, we just exit , å¦‚æœå½“å‰æ²¡æœ‰æ³¨å†Œäº‹ä»¶,å°±é€€å‡º */
 		if (0==(flags&EVLOOP_NO_EXIT_ON_EMPTY) &&
 		    !event_haveevents(base) && !N_ACTIVE_CALLBACKS(base)) {
 			event_debug(("%s: no events registered.", __func__));
@@ -1992,12 +1992,12 @@ event_base_loop(struct event_base *base, int flags)
 		clear_time_cache(base);
         
         /* 
-         * µ÷ÓÃÏµÍ³ I/O demultiplexer { select() »ò epoll_wait() }, 
-         * µÈ´ı¾ÍĞ÷µÄ event ¿ÉÄÜÊÇ epoll_wait »òÕßÊÇ select µÈ, 
-         * ÔÚevsel->dispatch() ÖĞ»á°Ñ I/O event »ò signal event
-         * ²åÈëµ½ active Á´±íÖĞ.
+         * è°ƒç”¨ç³»ç»Ÿ I/O demultiplexer { select() æˆ– epoll_wait() }, 
+         * ç­‰å¾…å°±ç»ªçš„ event å¯èƒ½æ˜¯ epoll_wait æˆ–è€…æ˜¯ select ç­‰, 
+         * åœ¨evsel->dispatch() ä¸­ä¼šæŠŠ I/O event æˆ– signal event
+         * æ’å…¥åˆ° active é“¾è¡¨ä¸­.
          *
-         * µÈ´ı IO ÊÂ¼ş¾ÍĞ÷
+         * ç­‰å¾… IO äº‹ä»¶å°±ç»ª
          */
 		res = evsel->dispatch(base, tv_p);
 
@@ -2011,18 +2011,18 @@ event_base_loop(struct event_base *base, int flags)
 		update_time_cache(base);
 
         /*
-         * ´¦Àí³¬Ê±ÊÂ¼ş, ½«³¬Ê±ÊÂ¼ş²åÈëµ½¼¤»îÁ´±íÖĞ.
+         * å¤„ç†è¶…æ—¶äº‹ä»¶, å°†è¶…æ—¶äº‹ä»¶æ’å…¥åˆ°æ¿€æ´»é“¾è¡¨ä¸­.
          */
 		timeout_process(base);
 
         /*
-         * µ÷ÓÃ event_process_active() º¯Êı´¦Àí¼¤»îÁ´±í(active)ÖĞµÄ¾ÍĞ÷ event, µ÷
-         * ÓÃÆä»Øµ÷º¯ÊıÖ´ĞĞÊÂ¼ş´¦Àí.  
-         * º¯Êı event_process_active() »áÑ°ÕÒ×î¸ßÓÅÏÈ¼¶( priorityÖµÔ½Ğ¡ÓÅÏÈ¼¶Ô½¸ß )µÄ
-         * ¼¤»îÊÂ¼şÁ´±í, È»ºó´¦ÀíÁ´±íÖĞµÄËùÓĞ¾ÍĞ÷ÊÂ¼ş, Òò´Ë, µÍÓÅÏÈ¼¶µÄ¾ÍĞ÷ÊÂ¼ş¿ÉÄÜ
-         * µÃ²»µ½¼°Ê±µÄ´¦Àí.
+         * è°ƒç”¨ event_process_active() å‡½æ•°å¤„ç†æ¿€æ´»é“¾è¡¨(active)ä¸­çš„å°±ç»ª event, è°ƒ
+         * ç”¨å…¶å›è°ƒå‡½æ•°æ‰§è¡Œäº‹ä»¶å¤„ç†.  
+         * å‡½æ•° event_process_active() ä¼šå¯»æ‰¾æœ€é«˜ä¼˜å…ˆçº§( priorityå€¼è¶Šå°ä¼˜å…ˆçº§è¶Šé«˜ )çš„
+         * æ¿€æ´»äº‹ä»¶é“¾è¡¨, ç„¶åå¤„ç†é“¾è¡¨ä¸­çš„æ‰€æœ‰å°±ç»ªäº‹ä»¶, å› æ­¤, ä½ä¼˜å…ˆçº§çš„å°±ç»ªäº‹ä»¶å¯èƒ½
+         * å¾—ä¸åˆ°åŠæ—¶çš„å¤„ç†.
          */
-        /** if (xxx) ...xxx... Number of total events active in this event_base; ÓĞ¾ÍĞ÷ÊÂ¼ş */
+        /** if (xxx) ...xxx... Number of total events active in this event_base; æœ‰å°±ç»ªäº‹ä»¶ */
 		if (N_ACTIVE_CALLBACKS(base)) {
 			int n = event_process_active(base);
 			if ((flags & EVLOOP_ONCE)
@@ -2035,7 +2035,7 @@ event_base_loop(struct event_base *base, int flags)
 	event_debug(("%s: asked to terminate loop.", __func__));
 
 done:
-	clear_time_cache(base); /* Ñ­»·½áÊø, Çå¿ÕÊ±¼ä»º´æ */
+	clear_time_cache(base); /* å¾ªç¯ç»“æŸ, æ¸…ç©ºæ—¶é—´ç¼“å­˜ */
 	base->running_loop = 0;
 
 	EVBASE_RELEASE_LOCK(base, th_base_lock);
@@ -2614,12 +2614,12 @@ event_add_nolock_(struct event *ev, const struct timeval *tv,
     int tv_is_absolute)
 {
     /*
-     * ĞÎ²Î struct event *ev [in] Ö¸ÏòÒª×¢²áµÄÊÂ¼ş
-     * ĞÎ²Î const struct timeval *tv [in] ³¬Ê±Ê±¼ä
+     * å½¢å‚ struct event *ev [in] æŒ‡å‘è¦æ³¨å†Œçš„äº‹ä»¶
+     * å½¢å‚ const struct timeval *tv [in] è¶…æ—¶æ—¶é—´
      * 
-     * º¯Êı½« ev ×¢²áµ½ ev->ev_base ÉÏ, ÊÂ¼şÀàĞÍÓÉ ev->ev_events Ö¸Ã÷,
-     * Èç¹û×¢²á³É¹¦, ev ½«±»²åÈëµ½ÒÑ×¢²áÁ´±íÖĞ; Èç¹û tv ²»ÊÇ NULL ,Ôò
-     * »áÍ¬Ê±×¢²á¶¨Ê±ÊÂ¼ş, ½« ev Ìí¼Óµ½ timer ¶ÑÉÏ.
+     * å‡½æ•°å°† ev æ³¨å†Œåˆ° ev->ev_base ä¸Š, äº‹ä»¶ç±»å‹ç”± ev->ev_events æŒ‡æ˜,
+     * å¦‚æœæ³¨å†ŒæˆåŠŸ, ev å°†è¢«æ’å…¥åˆ°å·²æ³¨å†Œé“¾è¡¨ä¸­; å¦‚æœ tv ä¸æ˜¯ NULL ,åˆ™
+     * ä¼šåŒæ—¶æ³¨å†Œå®šæ—¶äº‹ä»¶, å°† ev æ·»åŠ åˆ° timer å †ä¸Š.
      */
 	struct event_base *base = ev->ev_base;
 	int res = 0;
@@ -2649,8 +2649,8 @@ event_add_nolock_(struct event *ev, const struct timeval *tv,
 	 * prepare for timeout insertion further below, if we get a
 	 * failure on any step, we should not change any state.
 	 * 
-	 * ĞÂµÄ timer ÊÂ¼ş, µ÷ÓÃ timer heap ½Ó¿ÚÔÚ¶ÑÉÏÔ¤ÁôÒ»¸öÎ»ÖÃ
-	 * ÕâÑùÄÜ±£Ö¤¸Ã²Ù×÷µÄÔ­×ÓĞÔ. 
+	 * æ–°çš„ timer äº‹ä»¶, è°ƒç”¨ timer heap æ¥å£åœ¨å †ä¸Šé¢„ç•™ä¸€ä¸ªä½ç½®
+	 * è¿™æ ·èƒ½ä¿è¯è¯¥æ“ä½œçš„åŸå­æ€§. 
 	 */
 	if (tv != NULL && !(ev->ev_flags & EVLIST_TIMEOUT)) {
 		if (min_heap_reserve_(&base->timeheap,
@@ -2672,8 +2672,8 @@ event_add_nolock_(struct event *ev, const struct timeval *tv,
 #endif
 
     /*
-     * Èç¹ûÊÂ¼ş ev ²»ÔÚÒÑ×¢²á»òÕß¼¤»îÁ´±íÖĞ, Ôòµ÷ÓÃ evmap_io_add_() »ò
-     * evmap_signal_add_() ×¢²áÊÂ¼ş.
+     * å¦‚æœäº‹ä»¶ ev ä¸åœ¨å·²æ³¨å†Œæˆ–è€…æ¿€æ´»é“¾è¡¨ä¸­, åˆ™è°ƒç”¨ evmap_io_add_() æˆ–
+     * evmap_signal_add_() æ³¨å†Œäº‹ä»¶.
      */
 	if ((ev->ev_events & (EV_READ|EV_WRITE|EV_CLOSED|EV_SIGNAL)) &&
 	    !(ev->ev_flags & (EVLIST_INSERTED|EVLIST_ACTIVE|EVLIST_ACTIVE_LATER))) {
@@ -2682,7 +2682,7 @@ event_add_nolock_(struct event *ev, const struct timeval *tv,
 		else if (ev->ev_events & EV_SIGNAL)
 			res = evmap_signal_add_(base, (int)ev->ev_fd, ev);
 		if (res != -1)
-			event_queue_insert_inserted(base, ev); /* ×¢²á³É¹¦, ²åÈë event µ½ÒÑ×¢²áÁ´±íÖĞ */
+			event_queue_insert_inserted(base, ev); /* æ³¨å†ŒæˆåŠŸ, æ’å…¥ event åˆ°å·²æ³¨å†Œé“¾è¡¨ä¸­ */
 		if (res == 1) {
 			/* evmap says we need to notify the main thread. */
 			notify = 1;
@@ -2714,7 +2714,7 @@ event_add_nolock_(struct event *ev, const struct timeval *tv,
 #ifndef USE_REINSERT_TIMEOUT
 		if (ev->ev_flags & EVLIST_TIMEOUT) {
             /*
-             * EVLIST_TIMEOUT ±íÃ÷ event ÒÑ¾­ÔÚ¶¨Ê±Æ÷¶ÑÖĞÁË, ÔòĞèÉ¾³ı¾ÉµÄ.
+             * EVLIST_TIMEOUT è¡¨æ˜ event å·²ç»åœ¨å®šæ—¶å™¨å †ä¸­äº†, åˆ™éœ€åˆ é™¤æ—§çš„.
              */
 			event_queue_remove_timeout(base, ev);
 		}
@@ -2734,11 +2734,11 @@ event_add_nolock_(struct event *ev, const struct timeval *tv,
 					*ev->ev_pncalls = 0;
 				}
 			}
-            /* Èç¹ûÊÂ¼şÒÑ¾­ÊÇ¾ÍĞ÷×´Ì¬, Ôò´Ó¼¤»îÁ´±íÖĞÉ¾³ı. */
+            /* å¦‚æœäº‹ä»¶å·²ç»æ˜¯å°±ç»ªçŠ¶æ€, åˆ™ä»æ¿€æ´»é“¾è¡¨ä¸­åˆ é™¤. */
 			event_queue_remove_active(base, event_to_event_callback(ev));
 		}
 
-        /* ¼ÆËãÊ±¼ä, ²¢²åÈëµ½ timer Ğ¡¸ù¶ÑÖĞ */
+        /* è®¡ç®—æ—¶é—´, å¹¶æ’å…¥åˆ° timer å°æ ¹å †ä¸­ */
 		gettime(base, &now);
 
 		common_timeout = is_common_timeout(tv, base);
@@ -2851,7 +2851,7 @@ event_del_nolock_(struct event *ev, int blocking)
 		ev, EV_SOCK_ARG(ev->ev_fd), ev->ev_callback));
 
 	/* An event without a base has not been added 
-     * µ± ev->ev_base Îª NULL, ±íÃ÷ ev Ã»ÓĞ±»×¢²á.
+     * å½“ ev->ev_base ä¸º NULL, è¡¨æ˜ ev æ²¡æœ‰è¢«æ³¨å†Œ.
      */    
 	if (ev->ev_base == NULL)
 		return (-1);
@@ -2865,7 +2865,7 @@ event_del_nolock_(struct event *ev, int blocking)
 		}
 	}
 
-    /* »ñµÃ ev ×¢²áµÄ event_base */
+    /* è·å¾— ev æ³¨å†Œçš„ event_base */
 	base = ev->ev_base;
 
 	EVUTIL_ASSERT(!(ev->ev_flags & ~EVLIST_ALL));
@@ -2879,7 +2879,7 @@ event_del_nolock_(struct event *ev, int blocking)
 	}
 
     /*
-     * ´Ó¶ÔÓ¦µÄÁ´±íÖĞÉ¾³ı.
+     * ä»å¯¹åº”çš„é“¾è¡¨ä¸­åˆ é™¤.
      */
 	if (ev->ev_flags & EVLIST_TIMEOUT) {
 		/* NOTE: We never need to notify the main thread because of a
@@ -2899,7 +2899,7 @@ event_del_nolock_(struct event *ev, int blocking)
 
 	if (ev->ev_flags & EVLIST_INSERTED) {
 		event_queue_remove_inserted(base, ev);        
-        /* EVLIST_INSERTED ±íÃ÷ÊÇ I/O »ò Signal ÊÂ¼ş, ĞèÒªµ÷ÓÃ I/O demultiplexer ×¢ÏúÊÂ¼ş */
+        /* EVLIST_INSERTED è¡¨æ˜æ˜¯ I/O æˆ– Signal äº‹ä»¶, éœ€è¦è°ƒç”¨ I/O demultiplexer æ³¨é”€äº‹ä»¶ */
 		if (ev->ev_events & (EV_READ|EV_WRITE|EV_CLOSED))
 			res = evmap_io_del_(base, ev->ev_fd, ev);
 		else
@@ -3185,8 +3185,8 @@ static int
 timeout_next(struct event_base *base, struct timeval **tv_p)
 {
     /*
-     * ¸ù¾İ¶ÑÖĞ¾ßÓĞ×îĞ¡³¬Ê±ÖµµÄÊÂ¼şºÍµ±Ç°Ê±¼äÀ´¼ÆËãµÈ´ıÊ±¼ä. 
-     * ×¢Òâ: µÚ2¸öĞÎ²ÎÊÇ  struct timeval **tv_p  ¶ş¼¶Ö¸Õë.
+     * æ ¹æ®å †ä¸­å…·æœ‰æœ€å°è¶…æ—¶å€¼çš„äº‹ä»¶å’Œå½“å‰æ—¶é—´æ¥è®¡ç®—ç­‰å¾…æ—¶é—´. 
+     * æ³¨æ„: ç¬¬2ä¸ªå½¢å‚æ˜¯  struct timeval **tv_p  äºŒçº§æŒ‡é’ˆ.
      */
 	/* Caller must hold th_base_lock */
 	struct timeval now;
@@ -3194,29 +3194,29 @@ timeout_next(struct event_base *base, struct timeval **tv_p)
 	struct timeval *tv = *tv_p;
 	int res = 0;
 
-    /* ¶ÑÊ×ÔªËØ¾ßÓĞ×îĞ¡µÄ³¬Ê±Öµ */
+    /* å †é¦–å…ƒç´ å…·æœ‰æœ€å°çš„è¶…æ—¶å€¼ */
 	ev = min_heap_top_(&base->timeheap);
 
 	if (ev == NULL) {
 		/* if no time-based events are active wait for I/O */
-        /* Èç¹ûÃ»ÓĞ¶¨Ê±Æ÷ÊÂ¼ş, ½«µÈ´ıÊ±¼äÉèÖÃÎª NULL, ±íÊ¾Ò»Ö±×èÈûÖ±µ½ÓĞ IO ÊÂ¼ş·¢Éú.  */
+        /* å¦‚æœæ²¡æœ‰å®šæ—¶å™¨äº‹ä»¶, å°†ç­‰å¾…æ—¶é—´è®¾ç½®ä¸º NULL, è¡¨ç¤ºä¸€ç›´é˜»å¡ç›´åˆ°æœ‰ IO äº‹ä»¶å‘ç”Ÿ.  */
 		*tv_p = NULL;
 		goto out;
 	}
 
-    /* »ñµÃµ±Ç°Ê±¼ä */
+    /* è·å¾—å½“å‰æ—¶é—´ */
 	if (gettime(base, &now) == -1) {
 		res = -1;
 		goto out;
 	}
 
-    /* Èç¹û³¬Ê±Ê±¼ä <= µ±Ç°Ê±¼ä, Ôò²»ÄÜµÈ´ı, ĞèÒªÁ¢¼´·µ»Ø. */
+    /* å¦‚æœè¶…æ—¶æ—¶é—´ <= å½“å‰æ—¶é—´, åˆ™ä¸èƒ½ç­‰å¾…, éœ€è¦ç«‹å³è¿”å›. */
 	if (evutil_timercmp(&ev->ev_timeout, &now, <=)) {
 		evutil_timerclear(tv);
 		goto out;
 	}
 
-    /* ¼ÆËãµÈ´ıµÄÊ±¼ä = µ±Ç°Ê±¼ä - ×îĞ¡µÄ³¬Ê±Ê±¼ä */
+    /* è®¡ç®—ç­‰å¾…çš„æ—¶é—´ = å½“å‰æ—¶é—´ - æœ€å°çš„è¶…æ—¶æ—¶é—´ */
 	evutil_timersub(&ev->ev_timeout, &now, tv);
 
 	EVUTIL_ASSERT(tv->tv_sec >= 0);
@@ -3232,7 +3232,7 @@ static void
 timeout_process(struct event_base *base)
 {
     /*
-    * ´¦Àí³¬Ê±ÊÂ¼ş, ½«³¬Ê±ÊÂ¼ş²åÈëµ½¼¤»îÁ´±íÖĞ.
+    * å¤„ç†è¶…æ—¶äº‹ä»¶, å°†è¶…æ—¶äº‹ä»¶æ’å…¥åˆ°æ¿€æ´»é“¾è¡¨ä¸­.
     */
 	/* Caller must hold lock. */
 	struct timeval now;
@@ -3245,8 +3245,8 @@ timeout_process(struct event_base *base)
 	gettime(base, &now);
 
     /*
-     * ¼ì²é heap ÖĞµÄ timer events, ½«¾ÍĞ÷µÄ timer event ´Ó heap ÉÏ
-     * É¾³ı, ²¢²åÈëµ½¼¤»îÁ´±íÖĞ.
+     * æ£€æŸ¥ heap ä¸­çš„ timer events, å°†å°±ç»ªçš„ timer event ä» heap ä¸Š
+     * åˆ é™¤, å¹¶æ’å…¥åˆ°æ¿€æ´»é“¾è¡¨ä¸­.
      */
 	while ((ev = min_heap_top_(&base->timeheap))) {
 		if (evutil_timercmp(&ev->ev_timeout, &now, >))

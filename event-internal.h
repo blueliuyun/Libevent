@@ -85,8 +85,8 @@ extern "C" {
 /** Structure to define the backend of a given event_base. */
 /*
  * @2017-11-02 TY
- *  (1) ÔÚ Libevent ÖĞ, Ã¿Ò»ÖÖ I/O demultiplex »úÖÆµÄÊµÏÖ¶¼ĞèÒªÌá¹©Õâ 5 ¸ö
- *      º¯Êı½Ó¿Ú, À´Íê³É×ÔÉíµÄ³õÊ¼»¯, ÏûºÄÊÍ·Å, ÊÂ¼ş×¢²á, ÊÂ¼şÉ¾³ı, ÊÂ¼ş·Ö·¢.
+ *  (1) åœ¨ Libevent ä¸­, æ¯ä¸€ç§ I/O demultiplex æœºåˆ¶çš„å®ç°éƒ½éœ€è¦æä¾›è¿™ 5 ä¸ª
+ *      å‡½æ•°æ¥å£, æ¥å®Œæˆè‡ªèº«çš„åˆå§‹åŒ–, æ¶ˆè€—é‡Šæ”¾, äº‹ä»¶æ³¨å†Œ, äº‹ä»¶åˆ é™¤, äº‹ä»¶åˆ†å‘.
  *      
  */
 struct eventop {
@@ -97,7 +97,7 @@ struct eventop {
 	 * run the backend, and return it.  The returned pointer will get
 	 * stored by event_init into the event_base.evbase field.  On failure,
 	 * this function should return NULL. */
-	void *(*init)(struct event_base *); /* ³õÊ¼»¯ */
+	void *(*init)(struct event_base *); /* åˆå§‹åŒ– */
 	/** Enable reading/writing on a given fd or signal.  'events' will be
 	 * the events that we're trying to enable: one or more of EV_READ,
 	 * EV_WRITE, EV_SIGNAL, and EV_ET.  'old' will be those events that
@@ -106,17 +106,17 @@ struct eventop {
 	 * fdinfo field below.  It will be set to 0 the first time the fd is
 	 * added.  The function should return 0 on success and -1 on error.
 	 */
-	int (*add)(struct event_base *, evutil_socket_t fd, short old, short events, void *fdinfo); /* ×¢²áÊÂ¼ş */
+	int (*add)(struct event_base *, evutil_socket_t fd, short old, short events, void *fdinfo); /* æ³¨å†Œäº‹ä»¶ */
 	/** As "add", except 'events' contains the events we mean to disable. */
-	int (*del)(struct event_base *, evutil_socket_t fd, short old, short events, void *fdinfo); /* É¾³ıÊÂ¼ş */
+	int (*del)(struct event_base *, evutil_socket_t fd, short old, short events, void *fdinfo); /* åˆ é™¤äº‹ä»¶ */
 	/** Function to implement the core of an event loop.  It must see which
 	    added events are ready, and cause event_active to be called for each
 	    active event (usually via event_io_active or such).  It should
 	    return 0 on success and -1 on error.
 	 */
-	int (*dispatch)(struct event_base *, struct timeval *); /* ÊÂ¼ş·Ö·¢ */
+	int (*dispatch)(struct event_base *, struct timeval *); /* äº‹ä»¶åˆ†å‘ */
 	/** Function to clean up and free our data from the event_base. */
-	void (*dealloc)(struct event_base *); /* ×¢Ïú, ÊÍ·Å×ÊÔ´ */
+	void (*dealloc)(struct event_base *); /* æ³¨é”€, é‡Šæ”¾èµ„æº */
 	/** Flag: set if we need to reinitialize the event base after we fork.
 	 */
 	int need_reinit;
@@ -212,14 +212,14 @@ struct event_once {
 };
 
 /*
- * @2017-11-02 TY ÊÂ¼ş´¦Àí¿ò¼Ü
+ * @2017-11-02 TY äº‹ä»¶å¤„ç†æ¡†æ¶
  */
 struct event_base {
 	/** Function pointers and other data to describe this event_base's
 	 * backend. */
-	const struct eventop *evsel; /* Ö¸Õë evsel Ö¸ÏòÁËÈ«¾Ö±äÁ¿static const struct eventop *eventops[]ÖĞµÄÒ»¸ö */
+	const struct eventop *evsel; /* æŒ‡é’ˆ evsel æŒ‡å‘äº†å…¨å±€å˜é‡static const struct eventop *eventops[]ä¸­çš„ä¸€ä¸ª */
 	/** Pointer to backend-specific data. */
-	void *evbase;                /* Ö¸Õë evbase ÊÇÒ»¸ö eventopÊµÀı¶ÔÏó, ¼´Ö¸ÏòÄ³¸ö select, poll µÈµÄº¯ÊıÖ¸Õë   */
+	void *evbase;                /* æŒ‡é’ˆ evbase æ˜¯ä¸€ä¸ª eventopå®ä¾‹å¯¹è±¡, å³æŒ‡å‘æŸä¸ª select, poll ç­‰çš„å‡½æ•°æŒ‡é’ˆ   */
 
 	/** List of changes to tell backend about at next dispatch.  Only used
 	 * by the O(1) backends. */
@@ -229,7 +229,7 @@ struct event_base {
 	 * uses for signals */
 	const struct eventop *evsigsel;
 	/** Data to implement the common signal handler code. */
-    /** sig ¹ÜÀíĞÅºÅµÄ½á¹¹Ìå */
+    /** sig ç®¡ç†ä¿¡å·çš„ç»“æ„ä½“ */
 	struct evsig_info sig;
 
 	/** Number of virtual events */
@@ -240,7 +240,7 @@ struct event_base {
 	int event_count;
 	/** Maximum number of total events added to this event_base */
 	int event_count_max;
-	/** Number of total events active in this event_base, µ±Ç°µÄ event_base ÖĞ°üº¬µÄ active event ¸öÊı */
+	/** Number of total events active in this event_base, å½“å‰çš„ event_base ä¸­åŒ…å«çš„ active event ä¸ªæ•° */
 	int event_count_active;
 	/** Maximum number of total events active in this event_base */
 	int event_count_active_max;
@@ -271,8 +271,8 @@ struct event_base {
 	 * that have triggered, and whose callbacks need to be called).  Low
 	 * priority numbers are more important, and stall higher ones.
 	 */
-    /** ¶ş¼¶Ö¸Õë, ¿ÉÒÔ¿´×÷ÊÇÊı×é, ÆäÖĞÔ­Ê¼ activequeues[priority] ÊÇÒ»¸öÁ´
-     * ±í, Á´±íµÄÃ¿¸ö½áµãÖ¸ÏòÒ»¸öÓÅÏÈ¼¶Îª priority µÄ¾ÍĞ÷ÊÂ¼ş event. */
+    /** äºŒçº§æŒ‡é’ˆ, å¯ä»¥çœ‹ä½œæ˜¯æ•°ç»„, å…¶ä¸­åŸå§‹ activequeues[priority] æ˜¯ä¸€ä¸ªé“¾
+     * è¡¨, é“¾è¡¨çš„æ¯ä¸ªç»“ç‚¹æŒ‡å‘ä¸€ä¸ªä¼˜å…ˆçº§ä¸º priority çš„å°±ç»ªäº‹ä»¶ event. */
 	struct evcallback_list *activequeues; 
                                           
 	/** The length of the activequeues array */
@@ -298,13 +298,13 @@ struct event_base {
 	struct event_signal_map sigmap;
 
 	/** Priority queue of events with timeouts. */
-    /** ¹ÜÀí¶¨Ê±Æ÷ÊÂ¼şµÄĞ¡¸ù¶Ñ */
+    /** ç®¡ç†å®šæ—¶å™¨äº‹ä»¶çš„å°æ ¹å † */
 	struct min_heap timeheap;
 
 	/** Stored timeval: used to avoid calling gettimeofday/clock_gettime
 	 * too often. */
-	/** ÓÃÓÚÊ±¼ä¹ÜÀíµÄ±äÁ¿, ¼ÇÂ¼Ê±¼ä»º´æ;
-	 * ÉèÖÃÊ±¼ä»º´æµÄÓÅµãÊÇ²»±ØÃ¿´Î»ñµÃÊ±¼ä¶¼Ö´ĞĞÏµÍ³µ÷ÓÃ, ÒòÎªÕâ¸öÏµÍ³Ïà¶ÔºÄÊ±¼ä  */ 
+	/** ç”¨äºæ—¶é—´ç®¡ç†çš„å˜é‡, è®°å½•æ—¶é—´ç¼“å­˜;
+	 * è®¾ç½®æ—¶é—´ç¼“å­˜çš„ä¼˜ç‚¹æ˜¯ä¸å¿…æ¯æ¬¡è·å¾—æ—¶é—´éƒ½æ‰§è¡Œç³»ç»Ÿè°ƒç”¨, å› ä¸ºè¿™ä¸ªç³»ç»Ÿç›¸å¯¹è€—æ—¶é—´  */ 
 	struct timeval tv_cache;
 
 	struct evutil_monotonic_timer monotonic_timer;

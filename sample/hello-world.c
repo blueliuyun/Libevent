@@ -7,8 +7,8 @@
 */
 
 /*
- * µ±¿Í»§¶ËÁ´½Óµ½·şÎñÆ÷µÄÊ±ºò£¬·şÎñÆ÷¼òµ¥µØÏò¿Í»§¶Ë·¢ËÍÒ»Ìõ¡°Hello, World!¡±ÏûÏ¢£¬È»ºóµÈ´ı¿Í»§¶Ë¹Ø±Õ
- * ·şÎñÆ÷²»½ÓÊÜ¿Í»§¶Ë·¢ËÍµÄÊı¾İ
+ * å½“å®¢æˆ·ç«¯é“¾æ¥åˆ°æœåŠ¡å™¨çš„æ—¶å€™ï¼ŒæœåŠ¡å™¨ç®€å•åœ°å‘å®¢æˆ·ç«¯å‘é€ä¸€æ¡â€œHello, World!â€æ¶ˆæ¯ï¼Œç„¶åç­‰å¾…å®¢æˆ·ç«¯å…³é—­
+ * æœåŠ¡å™¨ä¸æ¥å—å®¢æˆ·ç«¯å‘é€çš„æ•°æ®
  */
 
 #include <string.h>
@@ -29,42 +29,42 @@
 #include <event2/util.h>
 #include <event2/event.h>
 
-static const char MESSAGE[] = "Hello, World!\n";
+static const char MESSAGE[] = "Hello, World! This is libevent. \r\n";
 
 static const int PORT = 9995;
 
-// ¼àÌı»Øµ÷º¯Êı£¨¼´Ò»¸öĞÂÁ´½Óµ½À´µÄÊ±ºòµÄ»Øµ÷º¯Êı£©
+// ç›‘å¬å›è°ƒå‡½æ•°ï¼ˆå³ä¸€ä¸ªæ–°é“¾æ¥åˆ°æ¥çš„æ—¶å€™çš„å›è°ƒå‡½æ•°ï¼‰
 static void listener_cb(struct evconnlistener *, evutil_socket_t,
     struct sockaddr *, int socklen, void *);
 	
-// Ğ´»Øµ÷º¯Êı
+// å†™å›è°ƒå‡½æ•°
 static void conn_writecb(struct bufferevent *, void *);
 
-// ¿Í»§¶Ë¹Ø±Õ»Øµ÷º¯Êı
+// å®¢æˆ·ç«¯å…³é—­å›è°ƒå‡½æ•°
 static void conn_eventcb(struct bufferevent *, short, void *);
 
-//ĞÅºÅ´¦Àíº¯Êı
+//ä¿¡å·å¤„ç†å‡½æ•°
 static void signal_cb(evutil_socket_t, short, void *);
 
 int
 main(int argc, char **argv)
 {
-	// event_base¶ÔÏó£¨¼´ReactorÊµÀı£©
+	// event_baseå¯¹è±¡ï¼ˆå³Reactorå®ä¾‹ï¼‰
 	struct event_base *base;
 	struct evconnlistener *listener;
-	// ĞÅºÅÊÂ¼ş´¦ÀíÆ÷
+	// ä¿¡å·äº‹ä»¶å¤„ç†å™¨
 	struct event *signal_event;
 
 	// åœ°å€
 	struct sockaddr_in sin;
 	
-	// Èç¹ûÊÇwindows»·¾³£¬ÔÙµ÷ÓÃsocketÏà¹Øº¯ÊıÖ®Ç°ĞèÒª½øĞĞ¶¯Ì¬¿â³õÊ¼»¯
+	// å¦‚æœæ˜¯windowsç¯å¢ƒï¼Œå†è°ƒç”¨socketç›¸å…³å‡½æ•°ä¹‹å‰éœ€è¦è¿›è¡ŒåŠ¨æ€åº“åˆå§‹åŒ–
 #ifdef _WIN32
 	WSADATA wsa_data;
 	WSAStartup(0x0201, &wsa_data);
 #endif
 
-	// ´´½¨Ò»¸öevent_baseÊµÀı£¨¼´Ò»¸öReactorÊµÀı£©
+	// åˆ›å»ºä¸€ä¸ªevent_baseå®ä¾‹ï¼ˆå³ä¸€ä¸ªReactorå®ä¾‹ï¼‰
 	base = event_base_new();
 	if (!base) {
 		fprintf(stderr, "Could not initialize libevent!\n");
@@ -75,8 +75,8 @@ main(int argc, char **argv)
 	sin.sin_family = AF_INET;
 	sin.sin_port = htons(PORT);
 
-	// µÚ 1 ¸öÊµ²Î±íÊ¾ : ËùÊôµÄevent_base¶ÔÏó
-	// µÚ 4 ¸öÊµ²ÎÊÇ±êÖ¾ : µØÖ·¿É¸´ÓÃ£¬µ÷ÓÃexecµÄÊ±ºò¹Ø±ÕÌ×½Ó×Ö
+	// ç¬¬ 1 ä¸ªå®å‚è¡¨ç¤º : æ‰€å±çš„event_baseå¯¹è±¡
+	// ç¬¬ 4 ä¸ªå®å‚æ˜¯æ ‡å¿— : åœ°å€å¯å¤ç”¨ï¼Œè°ƒç”¨execçš„æ—¶å€™å…³é—­å¥—æ¥å­—
 	listener = evconnlistener_new_bind(base, listener_cb, (void *)base,
 	    LEV_OPT_REUSEABLE|LEV_OPT_CLOSE_ON_FREE, -1,
 	    (struct sockaddr*)&sin,
@@ -89,22 +89,22 @@ main(int argc, char **argv)
 
 	signal_event = evsignal_new(base, SIGINT, signal_cb, (void *)base);
 
-	// ½«ÊÂ¼ş´¦ÀíÆ÷Ìí¼Óµ½event_baseµÄÊÂ¼ş´¦ÀíÆ÷×¢²á¶ÓÁĞÖĞ.
+	// å°†äº‹ä»¶å¤„ç†å™¨æ·»åŠ åˆ°event_baseçš„äº‹ä»¶å¤„ç†å™¨æ³¨å†Œé˜Ÿåˆ—ä¸­.
 	if (!signal_event || event_add(signal_event, NULL)<0) {
 		fprintf(stderr, "Could not create/add a signal event!\n");
 		return 1;
 	}
 
-	// ½øÈëÑ­»·
+	// è¿›å…¥å¾ªç¯
 	event_base_dispatch(base);
 
-    // ÊÍ·Å¼àÌıÆ÷
+    // é‡Šæ”¾ç›‘å¬å™¨
 	evconnlistener_free(listener);
 
-	// ÊÍ·ÅÊÂ¼ş´¦ÀíÆ÷
+	// é‡Šæ”¾äº‹ä»¶å¤„ç†å™¨
 	event_free(signal_event);
 
-	// ÊÍ·Å event_base ¶ÔÏó
+	// é‡Šæ”¾ event_base å¯¹è±¡
 	event_base_free(base);
 
 	printf("done\n");
@@ -116,11 +116,15 @@ listener_cb(struct evconnlistener *listener, evutil_socket_t fd,
     struct sockaddr *sa, int socklen, void *user_data)
 {
 	struct event_base *base = user_data;
-	// »º³åÇø
+	// ç¼“å†²åŒº
 	struct bufferevent *bev;
 
-    // »ùÓÚÌ×½Ó×Ö´´½¨Ò»¸ö»º³åÇø£¨Ì×½Ó×Ö½ÓÊÕµ½Êı¾İÖ®ºó´æ·ÅÔÚ»º³åÇøÖĞ,
-    // Ì×½Ó×ÖÔÚ·¢ËÍÊı¾İÖ®Ç°ÏÈ½«Êı¾İ´æ·ÅÔÚ»º³åÇøÖĞ£©
+	// Test
+	struct sockaddr_in sin;
+	unsigned char *pcAddr;
+	
+    // åŸºäºå¥—æ¥å­—åˆ›å»ºä¸€ä¸ªç¼“å†²åŒºï¼ˆå¥—æ¥å­—æ¥æ”¶åˆ°æ•°æ®ä¹‹åå­˜æ”¾åœ¨ç¼“å†²åŒºä¸­,
+    // å¥—æ¥å­—åœ¨å‘é€æ•°æ®ä¹‹å‰å…ˆå°†æ•°æ®å­˜æ”¾åœ¨ç¼“å†²åŒºä¸­ï¼‰
 	bev = bufferevent_socket_new(base, fd, BEV_OPT_CLOSE_ON_FREE);
 	if (!bev) {
 		fprintf(stderr, "Error constructing bufferevent!");
@@ -129,26 +133,34 @@ listener_cb(struct evconnlistener *listener, evutil_socket_t fd,
 	}
 	bufferevent_setcb(bev, NULL, conn_writecb, conn_eventcb, NULL);
 
-	// ÆôÓÃ»º´æÇøµÄĞ´¹¦ÄÜ
+	// å¯ç”¨ç¼“å­˜åŒºçš„å†™åŠŸèƒ½
 	bufferevent_enable(bev, EV_WRITE);
 
-	// ½ûÓÃ»º³åÇøµÄ¶Á¹¦ÄÜ
+	// ç¦ç”¨ç¼“å†²åŒºçš„è¯»åŠŸèƒ½
 	bufferevent_disable(bev, EV_READ);
+	
+	// test by tian
+	memcpy(&sin, sa, sizeof(struct sockaddr_in));
+	pcAddr = (unsigned char *)&(sin.sin_addr.s_addr);
+	
+	printf("Write begin... \r\n");
+	printf("The client ip is : %u.%u.%u.%u.  port is : %d \r\n", 
+		pcAddr[0], pcAddr[1], pcAddr[2], pcAddr[3], sin.sin_port);
 
-	// »º³åÇøĞ´
+	// ç¼“å†²åŒºå†™
 	bufferevent_write(bev, MESSAGE, strlen(MESSAGE));
 }
 
 static void
 conn_writecb(struct bufferevent *bev, void *user_data)
 {
-	// Êä³öbuffer
+	// è¾“å‡ºbuffer
 	struct evbuffer *output = bufferevent_get_output(bev);
 
-	// ÅĞ¶ÏÊı¾İÊÇ·ñÒÑ¾­·¢ËÍÍê³É
+	// åˆ¤æ–­æ•°æ®æ˜¯å¦å·²ç»å‘é€å®Œæˆ
 	if (evbuffer_get_length(output) == 0) {
 		printf("flushed answer\n");
-		// ÊÍ·Å»º³åÇø
+		// é‡Šæ”¾ç¼“å†²åŒº
 		bufferevent_free(bev);
 	}
 }
@@ -156,11 +168,12 @@ conn_writecb(struct bufferevent *bev, void *user_data)
 static void
 conn_eventcb(struct bufferevent *bev, short events, void *user_data)
 {
+	printf("In conn_eventcb()  \r\n");
 	if (events & BEV_EVENT_EOF) {
-		// ¿Í»§¶Ë¹Ø±Õ
+		// å®¢æˆ·ç«¯å…³é—­
 		printf("Connection closed.\n");
 	} else if (events & BEV_EVENT_ERROR) {
-		// ÔÚÁ¬½ÓÉÏ²úÉúÒ»¸ö´íÎó
+		// åœ¨è¿æ¥ä¸Šäº§ç”Ÿä¸€ä¸ªé”™è¯¯
 		printf("Got an error on the connection: %s\n",
 		    strerror(errno));/*XXX win32*/
 	}
@@ -177,6 +190,6 @@ signal_cb(evutil_socket_t sig, short events, void *user_data)
 
 	printf("Caught an interrupt signal; exiting cleanly in two seconds.\n");
 
-	// ÍË³öÊÂ¼şÑ­»·
+	// é€€å‡ºäº‹ä»¶å¾ªç¯
 	event_base_loopexit(base, &delay);
 }

@@ -139,7 +139,7 @@ struct evconnlistener *evconnlistener_new_bind(struct event_base *base,
     evconnlistener_cb cb, void *ptr, unsigned flags, int backlog,
     const struct sockaddr *sa, int socklen);
 /**
-   Disable and deallocate an evconnlistener.
+   Disable and deallocate an evconnlistener. 释放连接监听器.
  */
 EVENT2_EXPORT_SYMBOL
 void evconnlistener_free(struct evconnlistener *lev);
