@@ -71,6 +71,7 @@ main(int argc, char **argv)
 		return 1;
 	}
 
+	/**  Clear the sockaddr_in before using it  */
 	memset(&sin, 0, sizeof(sin));
 	sin.sin_family = AF_INET;
 	sin.sin_port = htons(PORT);

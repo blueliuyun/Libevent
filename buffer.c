@@ -256,7 +256,7 @@ evbuffer_free_all_chains(struct evbuffer_chain *chain)
 {
 	struct evbuffer_chain *next;
 	for (; chain; chain = next) {
-		next = chain->next;         /* chain ÏòÏÂÅ²¶¯  */
+		next = chain->next;         /* chain å‘ä¸‹æŒªåŠ¨  */
 		evbuffer_chain_free(chain); /**/
 	}
 }
@@ -361,7 +361,7 @@ struct evbuffer *
 evbuffer_new(void)
 {
     /*
-     * Îª evbuffer ÉêÇë¿Õ¼ä²¢·µ»ØÉêÇëµ½µÄ¿Õ¼äÊ×µØÖ·
+     * ä¸º evbuffer ç”³è¯·ç©ºé—´å¹¶è¿”å›ç”³è¯·åˆ°çš„ç©ºé—´é¦–åœ°å€
      */
 	struct evbuffer *buffer;
 
@@ -964,12 +964,12 @@ int
 evbuffer_add_buffer(struct evbuffer *outbuf, struct evbuffer *inbuf)
 {
     /*
-     * º¯ÊıµÄ×÷ÓÃ : ½«Ò»¸ö»º³åÇøÒÆ½Óµ½ÁíÒ»¸ö»º³åÇøÄ©Î².
-     * ÊµÖÊÉÏÊÇµ÷ÓÃ evbuffer_add Ìí¼ÓÊı¾İµ½ outbuf, ÈôÖ´ĞĞ³É¹¦, È»ºóÇå³ı inbuf ÖĞµÄÊı¾İ.
+     * å‡½æ•°çš„ä½œç”¨ : å°†ä¸€ä¸ªç¼“å†²åŒºç§»æ¥åˆ°å¦ä¸€ä¸ªç¼“å†²åŒºæœ«å°¾.
+     * å®è´¨ä¸Šæ˜¯è°ƒç”¨ evbuffer_add æ·»åŠ æ•°æ®åˆ° outbuf, è‹¥æ‰§è¡ŒæˆåŠŸ, ç„¶åæ¸…é™¤ inbuf ä¸­çš„æ•°æ®.
      */
 	struct evbuffer_chain *pinned, *last;
 	size_t in_total_len, out_total_len;
-	int result = 0; /* ·µ»ØÖµ, 0±íÊ¾³É¹¦, -1±íÊ¾Ê§°Ü */
+	int result = 0; /* è¿”å›å€¼, 0è¡¨ç¤ºæˆåŠŸ, -1è¡¨ç¤ºå¤±è´¥ */
 
 	EVBUFFER_LOCK2(inbuf, outbuf);
 	in_total_len = inbuf->total_len;
@@ -992,10 +992,10 @@ evbuffer_add_buffer(struct evbuffer *outbuf, struct evbuffer *inbuf)
 		/* There might be an empty chain at the start of outbuf; free
 		 * it. */
 		evbuffer_free_all_chains(outbuf->first);
-        /* Èô outbuf ³¤¶ÈÊÇ 0, ÔòÖ±½Ó½« inbuf ¸³Öµ¸ø outbuf */
+        /* è‹¥ outbuf é•¿åº¦æ˜¯ 0, åˆ™ç›´æ¥å°† inbuf èµ‹å€¼ç»™ outbuf */
 		COPY_CHAIN(outbuf, inbuf);
 	} else {
-	    /* Èô outbuf ³¤¶È·Ç 0, Ôò½« inbuf »º³åÇø½ÓÔÚ outbuf Ä©Î²  */
+	    /* è‹¥ outbuf é•¿åº¦é 0, åˆ™å°† inbuf ç¼“å†²åŒºæ¥åœ¨ outbuf æœ«å°¾  */
 		APPEND_CHAIN(outbuf, inbuf);
 	}
 
@@ -1105,7 +1105,7 @@ int
 evbuffer_drain(struct evbuffer *buf, size_t len)
 {
     /*
-     * Çå³ıÒ»²¿·Ö»òÕû¸ö»º³åÇø.
+     * æ¸…é™¤ä¸€éƒ¨åˆ†æˆ–æ•´ä¸ªç¼“å†²åŒº.
      */
 	struct evbuffer_chain *chain, *next;
 	size_t remaining, old_len;
