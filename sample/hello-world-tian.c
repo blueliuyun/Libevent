@@ -183,6 +183,7 @@ struct conn **conns;
 static void conn_init(void);
 struct conn *conn_new(const int sfd, const enum conn_states init_state, const int event_flags, const int read_buffer_size, enum network_transport transport, struct event_base *base);
 
+/** 使 main-thread  &  child-thread 都能忽略掉 SIGPIPE 信号 */
 static int sigignore(int sig) 
 {
     struct sigaction sa = { .sa_handler = SIG_IGN, .sa_flags = 0 };
