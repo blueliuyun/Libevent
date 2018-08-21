@@ -29,11 +29,14 @@
 #include <event2/util.h>
 #include <event2/event.h>
 #include "event2/thread.h"
+#include <event2/event_struct.h>
 #include "pthread.h"
 
 #include <sys/time.h>
-/***/
+/** sigaction() */
 #include <bits/sigaction.h>
+/** assert() */
+#include <assert.h>
 
 /** CQ_ITEM queue */
 #include <stdlib.h>
@@ -57,6 +60,11 @@ static pthread_cond_t	init_cond;
 static void wait_for_thread_registration(int nthreads);
 static void register_thread_initialized(void);
 
+/** 自定义 bool 类型  */
+typedef enum {
+	false,
+	true
+} bool;
 
 /** Main Thread  */
 typedef struct {
@@ -82,6 +90,12 @@ enum conn_states {
     conn_closed,     /**< connection is closed */
     conn_watch,      /**< held by the logger thread as a watcher */
     conn_max_state   /**< Max state value (used for assertion) */
+};
+
+enum protocol {
+    ascii_prot = 3, /* arbitrary value. */
+    binary_prot,
+    negotiating_prot /* Discovering the protocol */
 };
 	
 /** 
@@ -165,15 +179,29 @@ static CQ_ITEM *cqi_freelist;
 static pthread_mutex_t cqi_freelist_lock;
 /** CQ_ITEM  queue 的操作接口函数 */
 static CQ_ITEM *cqi_new(void);
+static void cqi_free(CQ_ITEM *item);
 static CQ_ITEM *cq_pop(CQ *cq);
 static void cq_init(CQ *cq);
-
+static void cq_push(CQ *cq, CQ_ITEM *item);
 
 /** The structure representing a connection into memcached. */
 struct conn {	
-    int    sfd;
-	struct conn   	*next;	  /* Used for generating a list of conn structures */
-	TLibeventThread *thread; /* Pointer to the thread object serving this connection */
+    int    sfd;	
+    enum conn_states  state;
+	struct event *ev;
+    short  ev_flags;	
+    short  which;	/** which events were just triggered */
+	
+    int    rsize;   /** total allocated size of rbuf */	
+    int    rbytes;  /** how much data, starting from rcur, do we have unparsed */
+
+	int    wsize;
+	int    wbytes;
+	
+    enum protocol protocol;		/* which protocol this connection speaks */
+	enum network_transport transport;	/* what transport is used by this connection */
+	struct conn   	*next;	  	/* Used for generating a list of conn structures */
+	TLibeventThread *thread;	/* Pointer to the thread object serving this connection */
 };
 
 /** variables */
@@ -182,6 +210,23 @@ struct conn **conns;
 
 static void conn_init(void);
 struct conn *conn_new(const int sfd, const enum conn_states init_state, const int event_flags, const int read_buffer_size, enum network_transport transport, struct event_base *base);
+static void conn_set_state(struct conn *c, enum conn_states state);
+
+/** state-machine func. */
+static void drive_machine(struct conn *c);
+static void reset_cmd_handler(struct conn *c);
+
+enum try_read_result {
+    READ_DATA_RECEIVED,
+    READ_NO_DATA_RECEIVED,
+    READ_ERROR,            /** an error occurred (on the socket) (or client closed connection) */
+    READ_MEMORY_ERROR      /** failed to allocate more memory */
+};
+static enum try_read_result try_read_network(struct conn *c);
+
+/** child-thread 处理事务 */
+static bool update_event(struct conn *c, const int new_flags);
+void event_handler(const int fd, const short which, void *arg);
 
 /** 使 main-thread  &  child-thread 都能忽略掉 SIGPIPE 信号 */
 static int sigignore(int sig) 
@@ -260,6 +305,10 @@ main(int argc, char **argv)
 	/** Init Child thread. */	
     pthread_mutex_init(&init_lock, NULL);
     pthread_cond_init(&init_cond, NULL);
+
+	pthread_mutex_init(&cqi_freelist_lock, NULL);
+	cqi_freelist = NULL;
+	
 	for(i=0; i<THREAD_NUM; i++)
 	{
 		nRet = evutil_socketpair(AF_UNIX, SOCK_STREAM, 0, fd);
@@ -400,7 +449,7 @@ listener_cb(struct evconnlistener *listener, evutil_socket_t fd,
 	unsigned char *pcAddr;
 	
     //每个连接连上来的时候, 都会申请一块CQ_ITEM的内存块, 用于存储连接的基本信息
-    //CQ_ITEM *pItem = cqi_new();
+    CQ_ITEM *pItem = cqi_new();
 
 	/** 线程分发 */		
 	/** memcached中线程负载均衡算法 (求余法) - 有待分析 by tian           */
@@ -410,13 +459,15 @@ listener_cb(struct evconnlistener *listener, evutil_socket_t fd,
 
 	thread->connect_fd = fd;
 
-	//pItem->sfd = fd;
-	//pItem->init_state = conn_new_cmd;
-	//pItem->event_flags = EV_READ|EV_PERSIST;
-	//pItem->read_buffer_size = 1024; 	// @2018-08-17 ! ! ! 临时写为 1024
-	//pItem->transport = tcp_transport;
-	//pItem->mode = queue_new_conn;
-	//向工作线程的队列中放入CQ_ITEM
+	pItem->sfd = fd;
+	pItem->init_state = conn_new_cmd;
+	pItem->event_flags = EV_READ|EV_PERSIST;
+	pItem->read_buffer_size = 128; 	// @2018-08-17 ! ! ! 临时写为 128
+	pItem->transport = tcp_transport;
+	pItem->mode = queue_new_conn;
+	
+	//向工作线程的队列中放入CQ_ITEM	
+    cq_push(thread->new_conn_queue, pItem);
 
 	// 线程读写 child-thread,  先 write 1 个无实际意义字节c, 可以触发该 child-thread 的 thread_libevent_process_cb()
 	write(thread->write_fd, "c", 1);	
@@ -459,8 +510,8 @@ listener_cb(struct evconnlistener *listener, evutil_socket_t fd,
 	// test by tian , print the ADDR of Client.
 	memcpy(&sin, sa, sizeof(struct sockaddr_in));
 	pcAddr = (unsigned char *)&(sin.sin_addr.s_addr);	
-	printf("The client ip is : %u.%u.%u.%u.  port is : %d \r\n", 
-		pcAddr[0], pcAddr[1], pcAddr[2], pcAddr[3], sin.sin_port);
+	printf("The client ip is : %u.%u.%u.%u.  port is : %d   fd is : %d \r\n", 
+		pcAddr[0], pcAddr[1], pcAddr[2], pcAddr[3], sin.sin_port, fd);
 }
 
 static void
@@ -628,17 +679,18 @@ static void thread_libevent_process_cb(evutil_socket_t fd, short event, void *ar
 		return;
 	}
 
+	// 响应pipe可读事件，读取主线程向管道内写的1字节数据(见dispatch_conn_new()函数)
 	nRecv = read(fd, cBuf, 1);
 	if(nRecv != 1)
 	{
 		return;
 	}	
 	//cBuf[nRecv] = '\0';
-#if 0
+
 	switch (cBuf[0]){
 		case 'c':{			
 			printf("thread %llu receive message : %c \r\n", (pthread_t)self->tid, cBuf[0]);
-			pItem = cq_pop(self->new_conn_queue); 	// !!!  2018-08-17   需要解决的代码  
+			pItem = cq_pop(self->new_conn_queue);
 			if(NULL == pItem) 
 			{
 				break;
@@ -646,7 +698,15 @@ static void thread_libevent_process_cb(evutil_socket_t fd, short event, void *ar
 			
 			switch (pItem->mode){
 				case queue_new_conn:{
-					//c = conn_new();
+					c = conn_new(pItem->sfd, pItem->init_state, pItem->event_flags,
+									pItem->read_buffer_size, pItem->transport,
+									self->base);
+					if(NULL == c) {
+						printf("thread_libevent_process_cb() : NULL == c \r\n");
+						close(pItem->sfd);
+					} else {
+						c->thread = self;
+					}					
 					break;
 				}
 				case queue_redispatch:{
@@ -654,7 +714,7 @@ static void thread_libevent_process_cb(evutil_socket_t fd, short event, void *ar
 					break;
 				}
 			}
-			//cqi_free();
+			cqi_free(pItem);
 			break;
 		}		
 		/* a client socket timed out */
@@ -663,7 +723,7 @@ static void thread_libevent_process_cb(evutil_socket_t fd, short event, void *ar
 			break;
 		}			
 	}
-#endif //#if 0
+#if 0
 	evRecv = event_new(self->base, self->connect_fd, EV_READ|EV_PERSIST, conn_readcb, self);	
 	// 将事件处理器添加到 这个 thread -base  事件处理器注册队列中.	
 	if(!evRecv || event_add(evRecv, 0)<-1)
@@ -671,7 +731,7 @@ static void thread_libevent_process_cb(evutil_socket_t fd, short event, void *ar
 		printf("event_add() error : evRecv \r\n");
 		return;
 	}
-
+#endif //#if 0
 	printf("thread_libevent_process_cb() : ok \r\n");
 	return;	
 }
@@ -718,6 +778,16 @@ static CQ_ITEM *cqi_new(void) {
 }
 
 /*
+ * Frees a connection queue item (adds it to the freelist.)
+ */
+static void cqi_free(CQ_ITEM *item) {
+    pthread_mutex_lock(&cqi_freelist_lock);
+    item->next = cqi_freelist;
+    cqi_freelist = item;
+    pthread_mutex_unlock(&cqi_freelist_lock);
+}
+
+/*
  * Looks for an item on a connection queue, but doesn't block if there isn't
  * one.
  * Returns the item, or NULL if no item is available
@@ -738,6 +808,21 @@ static CQ_ITEM *cq_pop(CQ *cq) {
 }
 
 /*
+ * Adds an item to a connection queue.
+ */
+static void cq_push(CQ *cq, CQ_ITEM *item) {
+    item->next = NULL;
+
+    pthread_mutex_lock(&cq->lock);
+    if (NULL == cq->tail)
+        cq->head = item;
+    else
+        cq->tail->next = item;
+    cq->tail = item;
+    pthread_mutex_unlock(&cq->lock);
+}
+
+/*
  * Initializes the connections array. We don't actually allocate connection
  * structures until they're needed, so as to avoid wasting memory when the
  * maximum connection count is much higher than the actual number of
@@ -749,17 +834,82 @@ static CQ_ITEM *cq_pop(CQ *cq) {
  */
 static void conn_init(void) 
 {
-	max_fds = 0xFF;
-	
+	max_fds = 0xFF;	// 2018-08-20  需要修改 max_fds     ！！！
+
+	if((conns = calloc(max_fds, sizeof(struct conn*))) == NULL)
+	{
+		printf("Failed to allocate connection structures \r\n");
+		exit(1);
+	}	
 }
 
 /***/
 struct conn *conn_new(const int sfd, enum conn_states init_state,
                 const int event_flags,
                 const int read_buffer_size, enum network_transport transport,
-                struct event_base *base) {
-    //struct conn *c;
+                struct event_base *base) 
+{
+	struct conn *c;
+
+	assert(sfd >= 0 && sfd < max_fds);
+	c = conns[sfd];
+
+	if(NULL == c)
+	{
+		if(!(c = (struct conn *)calloc(1, sizeof(struct conn)))){
+			printf("Failed to allocate conn object. \r\n");
+			return NULL;
+		}
+		/** the following... Conn Create */
+        c->rsize = read_buffer_size;
+		c->sfd = sfd;
+		conns[sfd] = c;
+	}
+	
+	c->transport = transport;
+	//c->protocol;
+	c->state = init_state;	
+    c->rbytes = c->wbytes = 0;
+
+	c->ev = event_new(base, sfd, event_flags, event_handler, (void *)c);
+	// 将事件处理器添加到 这个 thread -base  事件处理器注册队列中.	
+	if(!c->ev || event_add(c->ev, 0)<-1)
+	{
+		printf("event_add() error : &(c->event) \r\n");
+		return NULL;
+	}
+	c->ev_flags = event_flags;
+
+	return c;
+	
+	
 }
+
+/*
+ * Sets a connection's current state in the state machine. Any special
+ * processing that needs to happen on certain state transitions can
+ * happen here.
+ */
+static void conn_set_state(struct conn *c, enum conn_states state)
+{
+	assert(c != NULL);
+	assert(state >= conn_listening && state < conn_max_state);
+
+	if (state != c->state) {
+//		if (settings.verbose > 2) {
+//			fprintf(stderr, "%d: going from %s to %s\n",
+//					c->sfd, state_text(c->state),
+//					state_text(state));
+//		}
+
+		if (state == conn_write || state == conn_mwrite) {
+//			MEMCACHED_PROCESS_COMMAND_END(c->sfd, c->wbuf, c->wbytes);
+		}
+		c->state = state;
+	}
+}
+
+
 
 /** Initializes a connection queue. */
 static void cq_init(CQ *cq) {
@@ -779,7 +929,7 @@ static void wait_for_thread_registration(int nthreads)
     }
 }
 
-/***/
+/** Child-Thread init - Reg */
 static void register_thread_initialized(void) 
 {
 	static unsigned char nTmpInit = 0;
@@ -794,4 +944,143 @@ static void register_thread_initialized(void)
     //pthread_mutex_unlock(&worker_hang_lock);
 }
 
+/** Child-Thread 处理事务  */
+void event_handler(const int fd, const short which, void *arg)
+{
+	struct conn *c;
+
+	c = (struct conn *)arg;
+	assert(c != NULL);
+
+	c->which = which;
+	
+    /* sanity */
+	if(fd != c->sfd){
+		printf("Catastrophic: event fd doesn't match conn fd!\n");
+		//conn_close(c);
+		return;
+	}
+	
+	drive_machine(c);
+
+    /* wait for next event */
+    return;
+}
+
+/** Child-Thread 处理事务 - read -to - write */
+static bool update_event(struct conn *c, const int new_flags) {
+    assert(c != NULL);
+
+    struct event_base *base = (c->ev)->ev_base;
+
+    if (c->ev_flags == new_flags)
+        return true;
+    if (event_del(c->ev) == -1) return false;
+    event_set(c->ev, c->sfd, new_flags, event_handler, (void *)c);
+    event_base_set(base, c->ev);
+    c->ev_flags = new_flags;
+    if (event_add(c->ev, 0) == -1) return false;
+    return true;
+}
+
+/**/
+static void drive_machine(struct conn *c)
+{
+	bool stop = false;
+	int sfd;
+	socklen_t addrlen;
+	int nRes;
+
+	assert(NULL != c);
+
+	while(!stop){
+		//stop = true;
+
+		switch (c->state){
+			case conn_listening:{
+				break;
+			}			
+			case conn_waiting:{
+				//printf("drive_machine() : case conn_waiting \r\n");
+				if(!update_event(c, EV_WRITE | EV_PERSIST)){                        
+                    conn_set_state(c, conn_closing);
+                    break;
+				}
+				conn_set_state(c, conn_read);
+				stop = true;
+				break;
+			}
+			case conn_read:{
+				//printf("drive_machine() : case conn_read \r\n");
+				nRes = try_read_network(c);;
+				
+				break;
+			}			
+			case conn_new_cmd:{				
+				/* Only process nreqs at a time to avoid starving other connections */
+				reset_cmd_handler(c);				
+#if 0						  
+				/** */		  
+				if(c->rbytes > 0){
+                    /* We have already read in data into the input buffer,
+                       so libevent will most likely not signal read events
+                       on the socket (unless more data is available. As a
+                       hack we should just put in a request to write data,
+                       because that should be possible ;-)
+                    */
+                    if (!update_event(c, EV_WRITE | EV_PERSIST)) {                        
+                        conn_set_state(c, conn_closing);
+                        break;
+                    }
+                }
+#endif //#if 0				
+				stop = true;
+				break;
+			}
+			default:{	
+				break;
+			}
+		}
+	}
+	
+}
+
+static void reset_cmd_handler(struct conn *c)
+{	
+	if(c->rbytes > 0) {
+		conn_set_state(c, conn_parse_cmd);
+	} else {
+		conn_set_state(c, conn_waiting);		
+	}		
+}
+
+/*
+ * read from network as much as we can, handle buffer overflow and connection
+ * close.
+ * before reading, move the remaining incomplete fragment of a command
+ * (if any) to the beginning of the buffer.
+ *
+ * To protect us from someone flooding a connection with bogus data causing
+ * the connection to eat up all available memory, break out and start looking
+ * at the data I've got after a number of reallocs...
+ *
+ * @return enum try_read_result
+ */
+static enum try_read_result try_read_network(struct conn *c)
+{	
+	char cBuf[128] = {0};
+	int len = 0;	
+
+	len = read(c->sfd, cBuf, 128);
+	if(len <= 0){
+		// means the socket fd has been Closed.
+		//printf("socket %d has been Closed. \r\n", c->sfd);
+		close(c->sfd);
+		return READ_NO_DATA_RECEIVED;
+	}else {
+		printf("try_read_network() has read : %s \r\n", cBuf);
+	}
+	
+	return READ_DATA_RECEIVED;
+}
 
