@@ -46,11 +46,13 @@ static const char MESSAGE[] = "Hello, world! This is libevent. \r\n";
 static const int PORT = 9995;
 
 // 线程pool中的子线程总线
-#define THREAD_NUM 5
+#define THREAD_NUM 2	/* 5 */
 // 线程均衡调度时记录上一次用过的线程 id
 int nLastThreadTid = 0;
 
-#define BUF_SIZE 1024
+#define DATA_BUFFER_SIZE 2048
+/** High water marks for buffer shrinking */
+#define READ_BUFFER_HIGHWAT 8192
 
 /** Child Thread : Number of worker threads that have finished setting themselves up. */
 static int 				init_count = 0;
@@ -133,8 +135,30 @@ typedef struct conn_queue {
 }CQ;
 
 /** Stats stored per-thread.  */
+#define THREAD_STATS_FIELDS \
+    X(get_cmds) \
+    X(get_misses) \
+    X(get_expired) \
+    X(get_flushed) \
+    X(touch_cmds) \
+    X(touch_misses) \
+    X(delete_misses) \
+    X(incr_misses) \
+    X(decr_misses) \
+    X(cas_misses) \
+    X(bytes_read) \
+    X(bytes_written) \
+    X(flush_cmds) \
+    X(conn_yields) /* # of yields for connections (-R option)*/ \
+    X(auth_cmds) \
+    X(auth_errors) \
+    X(idle_kicks) /* idle connections killed */
+
 struct thread_stats {
-    pthread_mutex_t   mutex;
+    pthread_mutex_t   mutex;	
+#define X(name) ev_uint64_t  name;
+	THREAD_STATS_FIELDS
+#undef X
 };
 
 /** 需要保存的信息结构, 用于管道通信和基事件的管理 */
@@ -191,12 +215,23 @@ struct conn {
 	struct event *ev;
     short  ev_flags;	
     short  which;	/** which events were just triggered */
-	
-    int    rsize;   /** total allocated size of rbuf */	
-    int    rbytes;  /** how much data, starting from rcur, do we have unparsed */
 
+	
+    char   *rbuf;   /** buffer to read commands into, --- 用于存储客户端数据报文中的命令 */
+    char   *rcurr;  /** but if we parsed some already, this is where we stopped --- 未解析的命令的字符指针 */
+    int    rsize;   /** total allocated size of rbuf , --- rbuf的大小 */
+    int    rbytes;  /** how much data, starting from rcur, do we have unparsed --- 未解析的命令的长度 */
+
+    char   *wbuf;
+    char   *wcurr;
 	int    wsize;
 	int    wbytes;
+	
+    /** which state to go into after finishing current write */
+    enum conn_states  write_and_go;
+
+	/** rlbytes字段表示要读的“value数据”还剩下多少字节 （注意与"rbytes"的区别） */	
+    int    rlbytes;
 	
     enum protocol protocol;		/* which protocol this connection speaks */
 	enum network_transport transport;	/* what transport is used by this connection */
@@ -211,6 +246,8 @@ struct conn **conns;
 static void conn_init(void);
 struct conn *conn_new(const int sfd, const enum conn_states init_state, const int event_flags, const int read_buffer_size, enum network_transport transport, struct event_base *base);
 static void conn_set_state(struct conn *c, enum conn_states state);
+static void conn_shrink(struct conn *c);
+
 
 /** state-machine func. */
 static void drive_machine(struct conn *c);
@@ -223,6 +260,8 @@ enum try_read_result {
     READ_MEMORY_ERROR      /** failed to allocate more memory */
 };
 static enum try_read_result try_read_network(struct conn *c);
+static int try_read_command(struct conn *c);
+
 
 /** child-thread 处理事务 */
 static bool update_event(struct conn *c, const int new_flags);
@@ -360,7 +399,10 @@ main(int argc, char **argv)
 		return -1;
 	}
 	
-    /** Wait for all the threads to set themselves up before returning. */
+    /** 
+     * 1. Wait for all the threads to set themselves up before returning.  
+     * 2. mutex_lock(&init_lock) 主要是用来保护 pthread_cond_wait 等待临界时期的情况 
+     */
 	pthread_mutex_lock(&init_lock);
 	wait_for_thread_registration(THREAD_NUM);
 	pthread_mutex_unlock(&init_lock);	
@@ -435,6 +477,7 @@ main(int argc, char **argv)
  * Dispatches a new connection to another thread. This is only ever called
  * from the main thread, either during initialization (for UDP) or because
  * of an incoming connection.
+ * 2018-08-27 Reference code -- dispatch_conn_new()
  */
 static void
 listener_cb(struct evconnlistener *listener, evutil_socket_t fd,
@@ -462,7 +505,7 @@ listener_cb(struct evconnlistener *listener, evutil_socket_t fd,
 	pItem->sfd = fd;
 	pItem->init_state = conn_new_cmd;
 	pItem->event_flags = EV_READ|EV_PERSIST;
-	pItem->read_buffer_size = 128; 	// @2018-08-17 ! ! ! 临时写为 128
+	pItem->read_buffer_size = DATA_BUFFER_SIZE;
 	pItem->transport = tcp_transport;
 	pItem->mode = queue_new_conn;
 	
@@ -643,7 +686,7 @@ static void * worker_thread(void *arg)
 
 static void timeout_cb(evutil_socket_t fd, short event, void *arg)
 {
-	printf("timeout_cb() : enter \r\n");
+	//printf("timeout_cb() : enter \r\n");
 #if 0	
 	struct event *timeout = (struct event *)arg;
 
@@ -658,7 +701,7 @@ static void timeout_cb(evutil_socket_t fd, short event, void *arg)
 	  */
 	write(thread->write_fd, "Hello world. It is timeout_cb()", sizeof("Hello world. It is timeout_cb()") - 1);	
 #endif //#if 0
-	printf("timeout_cb() : ok \r\n");
+	//printf("timeout_cb() : ok \r\n");
 }
 
 static void thread_libevent_process_cb(evutil_socket_t fd, short event, void *arg)
@@ -685,7 +728,6 @@ static void thread_libevent_process_cb(evutil_socket_t fd, short event, void *ar
 	{
 		return;
 	}	
-	//cBuf[nRecv] = '\0';
 
 	switch (cBuf[0]){
 		case 'c':{			
@@ -860,8 +902,18 @@ struct conn *conn_new(const int sfd, enum conn_states init_state,
 			printf("Failed to allocate conn object. \r\n");
 			return NULL;
 		}
+		
 		/** the following... Conn Create */
+		c->rbuf = c->wbuf = 0;		
         c->rsize = read_buffer_size;
+		c->wsize = DATA_BUFFER_SIZE;
+
+		c->rbuf = (char *)malloc((size_t)c->rsize);
+        c->wbuf = (char *)malloc((size_t)c->wsize);		
+		if(c->rbuf == 0 || c->wbuf == 0){
+			return NULL;
+		}
+		
 		c->sfd = sfd;
 		conns[sfd] = c;
 	}
@@ -870,7 +922,9 @@ struct conn *conn_new(const int sfd, enum conn_states init_state,
 	//c->protocol;
 	c->state = init_state;	
     c->rbytes = c->wbytes = 0;
-
+		
+	//主线程主要是监听用户的socket连接事件；工作线程主要监听socket的读写事件  
+	//当用户socket的连接有数据传递过来的时候，就会调用event_handler这个回调函数
 	c->ev = event_new(base, sfd, event_flags, event_handler, (void *)c);
 	// 将事件处理器添加到 这个 thread -base  事件处理器注册队列中.	
 	if(!c->ev || event_add(c->ev, 0)<-1)
@@ -880,9 +934,7 @@ struct conn *conn_new(const int sfd, enum conn_states init_state,
 	}
 	c->ev_flags = event_flags;
 
-	return c;
-	
-	
+	return c;	
 }
 
 /*
@@ -909,7 +961,62 @@ static void conn_set_state(struct conn *c, enum conn_states state)
 	}
 }
 
+/**
+ *
+ */
+static void conn_close(struct conn *c) {
+    assert(c != NULL);
 
+    /* delete the event, the socket and the conn */
+    event_del(c->ev); //(&c->event);
+
+    printf("conn_close() : %d connection closed. \r\n", c->sfd);
+
+    //conn_cleanup(c);
+
+    //MEMCACHED_CONN_RELEASE(c->sfd);
+    conn_set_state(c, conn_closed);
+    close(c->sfd);
+
+    //pthread_mutex_lock(&conn_lock);
+    //allow_new_conns = true;
+    //pthread_mutex_unlock(&conn_lock);
+
+    return;
+}
+
+/*
+ * Shrinks a connection's buffers if they're too big.  This prevents
+ * periodic large "get" requests from permanently chewing lots of server
+ * memory.
+ *
+ * This should only be called in between requests since it can wipe output
+ * buffers!
+ */
+static void conn_shrink(struct conn *c)
+{
+    assert(c != NULL);
+
+	/** 
+	 * 1. 检查缓冲区 c->rbuf 是否数据满, 
+	 */
+    if (c->rsize > READ_BUFFER_HIGHWAT && c->rbytes < DATA_BUFFER_SIZE) {
+        char *newbuf;
+
+        if (c->rcurr != c->rbuf)
+            memmove(c->rbuf, c->rcurr, (size_t)c->rbytes);
+
+		/** 恢复 c->rbuf 大小为 DATA_BUFFER_SIZE */
+        newbuf = (char *)realloc((void *)c->rbuf, DATA_BUFFER_SIZE);
+
+        if (newbuf) {
+            c->rbuf = newbuf;
+            c->rsize = DATA_BUFFER_SIZE;
+        }
+        /* TODO check other branch... */
+        c->rcurr = c->rbuf;
+    }
+}
 
 /** Initializes a connection queue. */
 static void cq_init(CQ *cq) {
@@ -918,25 +1025,28 @@ static void cq_init(CQ *cq) {
 	cq->tail = NULL;
 }
 
-/***/
+/** 2018-08-27 需要再检查下面的这个函数执行时 registration 线程的个数！！ */
 static void wait_for_thread_registration(int nthreads)
 {
 	static unsigned int nTmpReg = 0;
+
+	nthreads;
+	
     while (init_count < THREAD_NUM) {
+		/** 2018-08-28 主线程在等待 '条件变量 init_cond'  时仍需要用变量 '已经完成初始化的线程个数   init_count  ' 来作为辅助判断	 			     */
         pthread_cond_wait(&init_cond, &init_lock);
 		nTmpReg++;
 		printf("wait_for_thread_registration() : %d \r\n", nTmpReg);
+		/** 结束此函数的时 nTmpReg 的值的可能范围是  			[0 ~ THREAD_NUM]	*/
     }
 }
 
-/** Child-Thread init - Reg */
+/** Child-Thread init - register */
 static void register_thread_initialized(void) 
 {
-	static unsigned char nTmpInit = 0;
     pthread_mutex_lock(&init_lock);
     init_count++;
-	nTmpInit++;
-	printf("register_thread_initialized() : %d \r\n", nTmpInit);
+	printf("register_thread_initialized() : %d \r\n", init_count);
     pthread_cond_signal(&init_cond);
     pthread_mutex_unlock(&init_lock);
     /* Force worker threads to pile up if someone wants us to */
@@ -947,6 +1057,7 @@ static void register_thread_initialized(void)
 /** Child-Thread 处理事务  */
 void event_handler(const int fd, const short which, void *arg)
 {
+	//printf("event_handler() %d -- enter \r\n", fd);
 	struct conn *c;
 
 	c = (struct conn *)arg;
@@ -957,13 +1068,14 @@ void event_handler(const int fd, const short which, void *arg)
     /* sanity */
 	if(fd != c->sfd){
 		printf("Catastrophic: event fd doesn't match conn fd!\n");
-		//conn_close(c);
+		conn_close(c);
 		return;
 	}
 	
 	drive_machine(c);
 
     /* wait for next event */
+	//printf("event_handler() %d -- ok \r\n", fd);
     return;
 }
 
@@ -998,11 +1110,13 @@ static void drive_machine(struct conn *c)
 
 		switch (c->state){
 			case conn_listening:{
+				/** 正在连接, 还没有 accept */
 				break;
 			}			
-			case conn_waiting:{
-				//printf("drive_machine() : case conn_waiting \r\n");
-				if(!update_event(c, EV_WRITE | EV_PERSIST)){                        
+			case conn_waiting:{				
+				/** 2018-08-26 等待新的命令请求, 此状态下的操作只是将 conn 状态转换为 conn_read 循环退出				*/
+				printf("drive_machine() : case conn_waiting \r\n");
+				if(!update_event(c, EV_READ | EV_PERSIST)){                        
                     conn_set_state(c, conn_closing);
                     break;
 				}
@@ -1011,13 +1125,43 @@ static void drive_machine(struct conn *c)
 				break;
 			}
 			case conn_read:{
-				//printf("drive_machine() : case conn_read \r\n");
-				nRes = try_read_network(c);;
-				
+				printf("drive_machine() : case conn_read \r\n");
+				nRes = try_read_network(c);
+
+				switch (nRes) {
+					case READ_NO_DATA_RECEIVED:
+						conn_set_state(c, conn_waiting);
+						break;
+					case READ_DATA_RECEIVED:
+						/**
+						 * 2018-08-26 如果读取数据成功, 则 conn 状态被转换为 conn_parse_cmd....
+						 * 2018-08-28 try_read_network(c) 并不确保每次到达     的数据都足够一个完整的 cmd 
+						 * 	所以会在接下来的 try_read_command()    	  判断是否是一个完整的 cmd
+						 */
+						conn_set_state(c, conn_parse_cmd);
+						break;
+					case READ_ERROR:
+						conn_set_state(c, conn_closing);
+						break;
+					case READ_MEMORY_ERROR:
+						/* Failed to allocate more memory */
+						/* State already set by try_read_network */
+						break;
+					}				
 				break;
-			}			
+			}
+			case conn_parse_cmd : {
+				printf("drive_machine() : case conn_parse_cmd \r\n");
+				if(try_read_command(c) == 0)
+				{
+					/** need more data : 当读到的数据还不够成为一个 cmd 的时候则需要 more data ( 这里我们可以把一个完整的 cmd 认为是一帧报文 ) */
+					conn_set_state(c, conn_waiting);
+				}
+				break;
+			}
 			case conn_new_cmd:{				
 				/* Only process nreqs at a time to avoid starving other connections */
+				/** 2018-08-26 状态 conn_new_cmd 下的操作只是只是将 conn 的状态转换为 conn_waiting */
 				reset_cmd_handler(c);				
 #if 0						  
 				/** */		  
@@ -1037,6 +1181,26 @@ static void drive_machine(struct conn *c)
 				stop = true;
 				break;
 			}
+			case conn_nread:{
+				if(0 == c->rlbytes){
+					//complete_nread(c);	
+					break;
+				}
+				
+				/* Check if rbytes < 0, to prevent crash */
+				if(c->rlbytes < 0){
+					conn_set_state(c, conn_closing);
+					break;
+				}
+
+				/***/
+				
+				break;
+			}
+			case conn_closing:{
+				conn_close(c);
+				break;
+			}				
 			default:{	
 				break;
 			}
@@ -1046,11 +1210,12 @@ static void drive_machine(struct conn *c)
 }
 
 static void reset_cmd_handler(struct conn *c)
-{	
+{
+    conn_shrink(c);
 	if(c->rbytes > 0) {
-		conn_set_state(c, conn_parse_cmd);
+		conn_set_state(c, conn_parse_cmd);	/** 2018-08-27  还有剩余的报文没有处理完, 需要继续处理 parser_cmd...  */
 	} else {
-		conn_set_state(c, conn_waiting);		
+		conn_set_state(c, conn_waiting);	/** 无剩余的报文需要处理, 可以等待新的事件到来				 */		
 	}		
 }
 
@@ -1068,19 +1233,148 @@ static void reset_cmd_handler(struct conn *c)
  */
 static enum try_read_result try_read_network(struct conn *c)
 {	
-	char cBuf[128] = {0};
-	int len = 0;	
+    enum try_read_result gotdata = READ_NO_DATA_RECEIVED;
+	int res;
+	int num_allocs = 0;
 
-	len = read(c->sfd, cBuf, 128);
-	if(len <= 0){
-		// means the socket fd has been Closed.
-		//printf("socket %d has been Closed. \r\n", c->sfd);
-		close(c->sfd);
-		return READ_NO_DATA_RECEIVED;
-	}else {
-		printf("try_read_network() has read : %s \r\n", cBuf);
+	assert(c != NULL);
+
+	if(c->rcurr != c->rbuf){
+		if(c->rbytes != 0){ /* otherwise there's nothing to copy */
+			memmove(c->rbuf, c->rcurr, c->rbytes);
+		}
+		c->rcurr = c->rbuf;
+	}
+
+	while(1){
+		if(c->rbytes >= c->rsize){
+			if(num_allocs == 4){
+				/** 2018-08-27  total size = 2048 *4  */
+				return gotdata;
+			}			
+			++num_allocs;
+
+			char *new_rbuf = realloc(c->rbuf, c->rsize * 2);
+			if(!new_rbuf) {
+				c->rbytes = 0;	/* ignore what we read */
+				printf("SERVER_ERROR out of memory reading request");
+				c->write_and_go = conn_closing;
+				return READ_MEMORY_ERROR;
+			}
+			c->rcurr = c->rbuf = new_rbuf;
+			c->rsize *= 2;
+		}
+
+		int avail = c->rsize - c->rbytes;
+		res = read(c->sfd, c->rbuf + c->rbytes, avail );	
+		if(res > 0){
+			char *tmp = (char*)malloc(sizeof(char)*res);
+			memmove(tmp, c->rbuf + c->rbytes, res);
+			printf("try_read_network() : Recv Msg -- ");
+			for (int i = 0; i < res; ++i)
+			{
+				printf("%02x ", tmp[i]);
+			}
+			printf("\r\n");
+			free(tmp);
+			tmp = NULL;
+			pthread_mutex_lock(&c->thread->stats.mutex);
+			c->thread->stats.bytes_read += res;
+			pthread_mutex_unlock(&c->thread->stats.mutex);
+			gotdata = READ_DATA_RECEIVED;
+			c->rbytes += res;
+			if(res == avail ){
+				continue;
+			} else {
+				break;	/** when res<avail , means have finished read all data */
+			}			
+		}
+		if(0 == res){
+			return READ_ERROR;
+		}// if(0...)
+		if(-1 == res){
+			if(EAGAIN == errno || EWOULDBLOCK == errno){
+				break;
+			}
+			return READ_ERROR;
+		}// if(-1...)
+	}
+	return gotdata;
+}
+
+/*
+ * if we have a complete line in the buffer, process it.
+ */
+static int try_read_command(struct conn *c)
+{
+	assert(c != NULL);
+	assert(c->rcurr <= (c->rbuf + c->rsize)); // 2018-08-26 其中 ‘=’ 是否必要？
+	assert(c->rbytes > 0);
+
+	/**
+	 * 2018-08-26 
+	 * 1. 暂且按 ascii_prot 处理 ,  目前 try_read_command() 暂时无实际意义, 对解析报文无影响.
+	 * 2.  
+	 */
+	if((unsigned char)c->rbuf[0] == (unsigned char)0x68){
+		printf("----len : %02x \r\n", c->rbuf[1]);
 	}
 	
-	return READ_DATA_RECEIVED;
+	c->protocol = ascii_prot;	
+	if(c->protocol == binary_prot) {
+		//
+	} else {
+		char *el, *cont;
+		if (0 == c->rbytes) { /** 读buffer 目前没有待解析的数据 */
+			return 0;
+		}
+		el = memchr(c->rcurr, '\n', c->rbytes); //找第一个命令的末尾, 即换行符
+		if (!el) {
+			if(0) //(c->rbytes > 1024){
+			{
+				char *ptr = c->rcurr;
+				while (*ptr == ' '){
+					/* ignore leading whitespaces */
+					++ptr;
+				}
+
+				if((ptr - c->rcurr) > 100 ||
+					(strncmp(ptr, "get", 4) && strncmp(ptr, "gets", 5))){
+
+					conn_set_state(c, conn_closing);
+					return 1;
+				}
+			} // if(c->rbytes > 1024)
+
+			/** 如果没有找到换行符，则说明读到的数据还不足以成为一个完整的命令,             返回0 */
+			return 0;
+		} // if (!el)
+		
+		cont = el + 1; //下一个命令的开头
+		/**
+         * 1. 下面这个if的作用是把el指向当前命令最后一个有效字符的下一个字符，即\r
+         *   目的是为了在命令后面插上一个\0，字符串结束符。
+         *	 例如 GET abc\r\n******，变成GET abc\0\n*****，这样以后读出的字符串就是一个命令。
+         */
+		if((el - c->rcurr) > 1 && *(el - 1) == '\r') {
+			el--;
+		}
+		*el = '\0';
+
+		assert(cont <= (c->rcurr + c->rbytes));
+
+		//process_command(c, c->rcurr);
+		
+		/**
+		 * 1. 当前命令执行完之后，把当前指针rcurr指向 下一个命令的开头，并调用rbytes（剩余未处理字节数大小）
+		 *   逻辑上相当于把已处理的命令去掉。
+		 */
+        c->rbytes -= (cont - c->rcurr);
+        c->rcurr = cont;
+
+        assert(c->rcurr <= (c->rbuf + c->rsize));		
+	}
+	
+	return 1;
 }
 
