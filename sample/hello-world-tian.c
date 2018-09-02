@@ -232,6 +232,13 @@ struct conn {
 
 	/** rlbytes字段表示要读的“value数据”还剩下多少字节 （注意与"rbytes"的区别） */	
     int    rlbytes;
+
+	/** IEC-104 Private Var */
+	char 	m_bHaveNew;			/** == 1 : Had receive one completed Msg  */
+	char	*m_pBuff;			/** 存储接收到的当前报文帧, 是已经解析后的字节,  在 conn_new() 内初始化				 */
+	int		m_nRxCount; 		/** 已经正确接收到的当前报文帧 	的字节数	*/
+	int		m_nRxLen;			/** 对应报文中的 length  	 */
+	
 	
     enum protocol protocol;		/* which protocol this connection speaks */
 	enum network_transport transport;	/* what transport is used by this connection */
@@ -907,7 +914,9 @@ struct conn *conn_new(const int sfd, enum conn_states init_state,
 		c->rbuf = c->wbuf = 0;		
         c->rsize = read_buffer_size;
 		c->wsize = DATA_BUFFER_SIZE;
+		c->m_pBuff = 0;
 
+		c->m_pBuff = (char *)malloc((size_t)c->rsize);
 		c->rbuf = (char *)malloc((size_t)c->rsize);
         c->wbuf = (char *)malloc((size_t)c->wsize);		
 		if(c->rbuf == 0 || c->wbuf == 0){
@@ -1304,6 +1313,7 @@ static enum try_read_result try_read_network(struct conn *c)
 
 /*
  * if we have a complete line in the buffer, process it.
+ * 
  */
 static int try_read_command(struct conn *c)
 {
@@ -1311,15 +1321,84 @@ static int try_read_command(struct conn *c)
 	assert(c->rcurr <= (c->rbuf + c->rsize)); // 2018-08-26 其中 ‘=’ 是否必要？
 	assert(c->rbytes > 0);
 
+	/** OnReceive() */
+	if(!c->m_bHaveNew) //(!HasNewPackage()) // 在有一帧完整报文的情况下, 不进行处理
+	{
+		unsigned char *pEnd = c->rcurr + c->rbytes;
+		for(; c->rcurr < pEnd; c->rcurr++, c->rbytes--)
+		{
+			if(c->m_nRxCount == 0) // 0. 第 1 个字符 0x68
+			{
+				for(; c->rcurr < pEnd; c->rcurr++, c->rbytes--)
+				{
+					if((*c->rcurr) == 0x68)
+					{
+						c->m_pBuff[c->m_nRxCount++] = *c->rcurr; // First, 启动符	
+#if 0						
+						if(IsFixFrame())
+						{
+							m_nASDULen = m_nRxLen = 0; // 对于固定帧格式, ASDU和报文长度都置零
+						}
+#endif //#if 0						
+						break;
+					}
+				}
+			}
+			else
+			{
+				if(0) //(IsFixFrame())
+				{
+					/**
+				     * 短帧 格式, 只有 APCI 部分.
+				     * 1. S帧 : 长度只有 6 个字节, 确认帧, 用于确认接收到的 I 帧 .
+				     *			S帧的字节 1 固定为 01H，字节 2 固定为 00H，字节 3 和字节 4 为接收序号。
+				     *
+				     * 2. U帧 : 长度只有 6 个字节, 控制帧, 用于控制启动/ 停止/ 测试 .
+				     *          U帧的字节2、3、4均固定为 00H，字节 1 包含 TESTFR，STARTDT
+				     *			和 STOPDT 三种功能，同时只能激活其中的一种功能。
+					 */ 
+				}
+				else
+				{
+					/**
+				 	 * 长帧 格式	, 由 APCI 和 ASDU 两部分组成 => APDU
+				 	 * 1. I帧 : 信息帧, 长度一定大于 6 个字节, 用于传输数据.
+				 	 */
+					if (c->m_nRxCount == 1)			/** 长度 */
+					{
+						c->m_pBuff[c->m_nRxCount++] = *c->rcurr;
+						//printf("----len : %02x \r\n", c->m_pBuff[c->m_nRxCount-1]);
+						if (*c->rcurr < (4+2)){
+							c->m_nRxCount = 0;	// 总长度至少为 4+2 字节
+						}else{
+							c->m_nRxLen = *c->rcurr;
+						}
+					}else if(c->m_nRxCount > 1 && c->m_nRxCount <= 3)	/** 发送序号 / 控制域 1 */
+					{
+
+					}else if(c->m_nRxCount > 3 && c->m_nRxCount <= 5)	/** 接收序号 / 控制域 1 */
+					{
+						
+					}
+				}
+			}
+
+			if(c->m_bHaveNew)
+			{
+				break;
+			}
+		}
+	}
+	
+//	if((unsigned char)c->rbuf[0] == (unsigned char)0x68){
+//		printf("----len : %02x \r\n", c->rbuf[1]);
+//	}
+	
 	/**
 	 * 2018-08-26 
 	 * 1. 暂且按 ascii_prot 处理 ,  目前 try_read_command() 暂时无实际意义, 对解析报文无影响.
 	 * 2.  
 	 */
-	if((unsigned char)c->rbuf[0] == (unsigned char)0x68){
-		printf("----len : %02x \r\n", c->rbuf[1]);
-	}
-	
 	c->protocol = ascii_prot;	
 	if(c->protocol == binary_prot) {
 		//
